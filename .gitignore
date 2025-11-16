@@ -1,0 +1,5 @@
+/target
+prices.json
+filtered_items.json
+*.png
+.idea

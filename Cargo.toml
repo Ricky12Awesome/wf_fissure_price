@@ -1,0 +1,22 @@
+[package]
+name = "wf_fissure_price"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+anyhow = "1.0.100"
+thiserror = "2.0.17"
+image = "0.25.9"
+tesseract = "0.15.2"
+rayon = "1.11.0"
+log = "0.4.28"
+env_logger = { version = "0.11.8", optional = true }
+ordered-float = { version = "5.1.0", features = ["serde"] }
+serde = { version = "1.0.228", features = ["derive"] }
+palette = "0.7.6"
+levenshtein = "1.0.5"
+serde_json = "1.0.145"
+serde-aux = "4.7.0"
+
+[features]
+bin = ["dep:env_logger"]
