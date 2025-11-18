@@ -176,8 +176,12 @@ impl Theme {
 
             for y in 0..filtered.height() {
                 let pixel = filtered.get_pixel_mut(x, y);
+                let [h, s, l] = self.primary_threshold;
+                let primary_filter = threshold_filter_custom(self.primary, *pixel, h, s, l);
+                let [h, s, l] = self.secondary_threshold;
+                let secondary_filter = threshold_filter_custom(self.secondary, *pixel, h, s, l);
 
-                if self.threshold_filter_custom(*pixel, 4.0, 0.16, 0.16) {
+                if primary_filter || secondary_filter {
                     *pixel = FILTER_FOREGROUND;
                     count += 1;
                 } else {

@@ -1,23 +1,9 @@
 use colored::{Color, Colorize};
-use image::{GenericImage, Rgb, RgbImage};
-use indexmap::IndexMap;
-use palette::{Hsl, IntoColor, Srgb};
-use serde::{Deserialize, Serialize};
-use std::str::FromStr;
-use wf_fissure_price::theme::threshold_filter_custom;
+use image::{DynamicImage, GenericImage, Rgb, RgbImage};
+use wf_fissure_price::theme::Themes;
 
 const WIDTH: f32 = 900.0;
 const HEIGHT: f32 = 60.0;
-
-#[derive(Serialize, Deserialize, Clone, Debug)]
-struct Theme<'a> {
-    primary: &'a str,
-    secondary: &'a str,
-    primary_threshold: [f32; 3],
-    secondary_threshold: [f32; 3],
-}
-
-type Themes = IndexMap<&'static str, Theme<'static>>;
 
 fn main() -> anyhow::Result<()> {
     let themes = serde_json::from_str::<Themes>(include_str!("../assets/themes.json"))?;
@@ -29,32 +15,18 @@ fn main() -> anyhow::Result<()> {
     let total_height = ((HEIGHT * scale) * themes.len() as f32 * 2.0) as u32;
     let mut result = RgbImage::new(width, total_height);
 
-    for (i, (name, theme)) in themes.iter().enumerate() {
+    for (i, theme) in themes.iter().enumerate() {
         let i = i * 2;
-        let primary_rgb = Srgb::from_str(theme.primary)?;
-        let secondary_rgb = Srgb::from_str(theme.secondary)?;
-        let primary: Hsl = primary_rgb.into_format().into_color();
-        let secondary: Hsl = secondary_rgb.into_format().into_color();
+        let name = &theme.name;
 
         let image = image::open(format!(
-            "./test-images/themes-scaled/{name}-{scale_full}.png"
+            "./test-images/themes-scaled/{name}-{scale_full}.png",
         ))?;
-        let mut image = image.to_rgb8();
+        let image = image.to_rgb8();
 
         result.copy_from(&image, 0, height * i as u32)?;
 
-        for pixel in image.pixels_mut() {
-            let [h, s, l] = theme.primary_threshold;
-            let primary_filter = threshold_filter_custom(primary, *pixel, h, s, l);
-            let [h, s, l] = theme.secondary_threshold;
-            let secondary_filter = threshold_filter_custom(secondary, *pixel, h, s, l);
-
-            if primary_filter || secondary_filter {
-                *pixel = Rgb([0; 3]);
-            } else {
-                *pixel = Rgb([255; 3]);
-            }
-        }
+        let (mut image, _) = theme.filter(DynamicImage::ImageRgb8(image));
 
         let buffer = image.as_flat_samples();
 
