@@ -7,22 +7,31 @@ use crate::theme::Theme;
 use image::{DynamicImage, GenericImageView, Pixel, Rgb};
 use log::debug;
 
-const PIXEL_REWARD_WIDTH: f32 = 968.0;
-const PIXEL_REWARD_HEIGHT: f32 = 235.0;
-const PIXEL_REWARD_YDISPLAY: f32 = 316.0;
+// Based on height being 1080
+// (width should not matter, since we go based on center of screen)
+const PIXEL_REWARD_WIDTH: f32 = 960.0;
+const PIXEL_REWARD_HEIGHT: f32 = 240.0;
+const PIXEL_REWARD_Y: f32 = 220.0;
 const PIXEL_REWARD_LINE_HEIGHT: f32 = 48.0;
 
-pub fn detect_theme(image: &DynamicImage) -> Option<Theme> {
-    let screen_scaling = if image.width() * 9 > image.height() * 16 {
+fn get_scale(image: &DynamicImage) -> f32 {
+    if image.width() * 9 > image.height() * 16 {
         image.height() as f32 / 1080.0
     } else {
         image.width() as f32 / 1920.0
-    };
+    }
+}
+
+pub fn detect_theme(image: &DynamicImage) -> Option<Theme> {
+    debug!("Detecting theme");
+    let screen_scaling = get_scale(image);
 
     let line_height = PIXEL_REWARD_LINE_HEIGHT / 2.0 * screen_scaling;
     let most_width = PIXEL_REWARD_WIDTH * screen_scaling;
 
     let min_width = most_width / 4.0;
+
+    debug!("{line_height} {most_width} {min_width}");
 
     let weights = (line_height as u32..image.height())
         .into_par_iter()
@@ -47,7 +56,7 @@ pub fn detect_theme(image: &DynamicImage) -> Option<Theme> {
             a
         });
 
-    debug!("{:#?}", weights);
+    debug!("Weights: {:?}", weights);
 
     let result = weights
         .iter()
@@ -55,195 +64,56 @@ pub fn detect_theme(image: &DynamicImage) -> Option<Theme> {
         .0
         .to_owned();
 
+    debug!("Detected Theme: {:?}", result);
+
     Some(result)
 }
 
 pub fn extract_parts(image: &DynamicImage, theme: Theme) -> Vec<DynamicImage> {
     // image.save("input.png").unwrap();
-    let screen_scaling = if image.width() * 9 > image.height() * 16 {
-        image.height() as f32 / 1080.0
-    } else {
-        image.width() as f32 / 1920.0
-    };
-    let line_height = (PIXEL_REWARD_LINE_HEIGHT / 2.0 * screen_scaling) as usize;
-
+    let screen_scaling = get_scale(image);
     let width = image.width() as f32;
-    let height = image.height() as f32;
-    let most_width = PIXEL_REWARD_WIDTH * screen_scaling;
-    let most_left = width / 2.0 - most_width / 2.0;
-    // Most Top = pixleRewardYDisplay - pixleRewardHeight + pixelRewardLineHeight
-    //                   (316          -        235        +       44)    *    1.1    =    137
-    let most_top = height / 2.0
-        - ((PIXEL_REWARD_YDISPLAY - PIXEL_REWARD_HEIGHT + PIXEL_REWARD_LINE_HEIGHT)
-            * screen_scaling);
-    let most_bot =
-        height / 2.0 - ((PIXEL_REWARD_YDISPLAY - PIXEL_REWARD_HEIGHT) * screen_scaling * 0.5);
+    let reward_y = PIXEL_REWARD_Y * screen_scaling;
+    let reward_width = PIXEL_REWARD_WIDTH * screen_scaling;
+    let reward_height = PIXEL_REWARD_HEIGHT * screen_scaling;
+    let reward_line = PIXEL_REWARD_LINE_HEIGHT * screen_scaling;
 
-    let prefilter = image.crop_imm(
-        most_left as u32,
-        most_top as u32,
-        most_width as u32,
-        (most_bot - most_top) as u32,
-    );
-    let mut prefilter_draw = prefilter.clone().into_rgb8();
-    // prefilter.save("prefilter.png").unwrap();
+    // top left corner
+    let x = (width / 2.0) - (reward_width / 2.0);
+    let y = reward_y + reward_height - reward_line;
 
-    let mut rows = Vec::<usize>::new();
-    for y in 0..prefilter.height() {
-        let mut count = 0;
-        for x in 0..prefilter.width() {
-            let color = prefilter.get_pixel(x, y).to_rgb();
-            if theme.threshold_filter(color) {
-                count += 1;
-            }
-        }
-        rows.push(count);
-    }
+    let partial_screenshot =
+        image.crop_imm(x as u32, y as u32, reward_width as u32, reward_line as u32);
 
-    let mut perc_weights = Vec::new();
-    let mut top_weights = Vec::new();
-    let mut mid_weights = Vec::new();
-    let mut bot_weights = Vec::new();
-
-    let top_line_100 = prefilter.height() as usize - line_height;
-    let top_line_50 = line_height / 2;
-
-    let mut scaling = -1.0;
-    let mut lowest_weight = 0.0;
-    for i in 0..50 {
-        let y_from_top = prefilter.height() as usize
-            - (i as f32 * (top_line_100 - top_line_50) as f32 / 50.0 + top_line_50 as f32) as usize;
-        let scale = 50 + i;
-        let scale_width = (prefilter.width() as f32 * scale as f32 / 100.0) as usize;
-
-        let text_segments = [2.0, 4.0, 16.0, 21.0];
-        let text_top = (screen_scaling * text_segments[0] * scale as f32 / 100.0) as usize;
-        let text_top_bot = (screen_scaling * text_segments[1] * scale as f32 / 100.0) as usize;
-        let text_both_bot = (screen_scaling * text_segments[2] * scale as f32 / 100.0) as usize;
-        let text_tail_bot = (screen_scaling * text_segments[3] * scale as f32 / 100.0) as usize;
-
-        // debug!("");
-        // debug!("i: {}", i);
-        // debug!("y_from_top: {}", y_from_top);
-        let mut w = 0.0;
-        for loc in text_top..text_top_bot + 1 {
-            w += (scale_width as f32 * 0.06 - rows[y_from_top + loc] as f32).abs();
-            prefilter_draw.put_pixel(
-                prefilter_draw.width() / 2 + i as u32,
-                (y_from_top + loc) as u32,
-                Rgb([255; 3]),
-            );
-        }
-        top_weights.push(w);
-
-        let mut w = 0.0;
-        for loc in text_top_bot + 1..text_both_bot {
-            if rows[y_from_top + loc] < scale_width / 15 {
-                w += (scale_width as f32 * 0.26 - rows[y_from_top + loc] as f32) * 5.0;
-            } else {
-                w += (scale_width as f32 * 0.24 - rows[y_from_top + loc] as f32).abs();
-            }
-            prefilter_draw.put_pixel(
-                prefilter_draw.width() / 2 + i as u32,
-                (y_from_top + loc) as u32,
-                Rgb([0, 255, 0]),
-            );
-        }
-        mid_weights.push(w);
-
-        let mut w = 0.0;
-        for loc in text_both_bot..text_tail_bot {
-            w += 10.0 * (scale_width as f32 * 0.007 - rows[y_from_top + loc] as f32).abs();
-            prefilter_draw.put_pixel(
-                prefilter_draw.width() / 2 + i as u32,
-                (y_from_top + loc) as u32,
-                Rgb([0, 0, 255]),
-            );
-        }
-        bot_weights.push(w);
-
-        top_weights[i] /= (text_top_bot - text_top + 1) as f32;
-        mid_weights[i] /= (text_both_bot - text_top_bot - 2) as f32;
-        bot_weights[i] /= (text_tail_bot - text_both_bot - 1) as f32;
-        perc_weights.push(top_weights[i] + mid_weights[i] + bot_weights[i]);
-
-        if scaling <= 0.0 || lowest_weight > perc_weights[i] {
-            scaling = scale as f32;
-            lowest_weight = perc_weights[i];
-        }
-    }
-
-    debug!("Scaling: {}", scaling);
-
-    let mut top_five = [-1_isize; 5];
-    for (i, _w) in perc_weights.iter().enumerate() {
-        let mut slot: isize = 4;
-        while slot != -1
-            && top_five[slot as usize] != -1
-            && perc_weights[i] > perc_weights[top_five[slot as usize] as usize]
-        {
-            slot -= 1;
-        }
-
-        if slot != -1 {
-            for slot2 in 0..slot {
-                top_five[slot2 as usize] = top_five[slot2 as usize + 1]
-            }
-            top_five[slot as usize] = i as isize;
-        }
-    }
-
-    debug!("top_five: {:?}", top_five);
-    scaling = top_five[4] as f32 + 50.0;
-    debug!("scaling: {:?}", top_five);
-
-    scaling /= 100.0;
-    let high_scaling = if scaling < 1.0 {
-        scaling + 0.01
-    } else {
-        scaling
-    };
-    let low_scaling = if scaling > 0.5 {
-        scaling + 0.01
-    } else {
-        scaling
-    };
-
-    let crop_width = PIXEL_REWARD_WIDTH * screen_scaling * high_scaling;
-    let crop_left = prefilter.width() as f32 / 2.0 - crop_width / 2.0;
-    let crop_top = height / 2.0
-        - (PIXEL_REWARD_YDISPLAY - PIXEL_REWARD_HEIGHT + PIXEL_REWARD_LINE_HEIGHT)
-            * screen_scaling
-            * high_scaling;
-    let crop_bot =
-        height / 2.0 - (PIXEL_REWARD_YDISPLAY - PIXEL_REWARD_HEIGHT) * screen_scaling * low_scaling;
-    let crop_hei = crop_bot - crop_top;
-    let crop_top = crop_top - most_top;
-
-    let partial_screenshot = DynamicImage::ImageRgb8(prefilter.into_rgb8()).crop_imm(
-        crop_left as u32,
-        crop_top as u32,
-        crop_width as u32,
-        crop_hei as u32,
+    // workaround for now
+    let partial_screenshot = partial_screenshot.resize(
+        PIXEL_REWARD_WIDTH as u32,
+        PIXEL_REWARD_LINE_HEIGHT as u32,
+        image::imageops::Lanczos3,
     );
 
-    // Draw top 5
-    for (i, y) in top_five.iter().enumerate() {
-        for x in 0..prefilter_draw.width() {
-            prefilter_draw.put_pixel(x, *y as u32, Rgb([255 - i as u8 * 50, 0, 0]));
-        }
-    }
-    // Draw histogram
-    for (y, row) in rows.iter().enumerate() {
-        for x in 0..*row {
-            prefilter_draw.put_pixel(x as u32, y as u32, Rgb([0, 255, 0]));
-        }
-    }
+    // partial_screenshot
+    //     .save("test.png")
+    //     .expect("Failed to save image");
 
-    // prefilter_draw.save("prefilter.png").unwrap();
-    // partial_screenshot.save("partial_screenshot.png").unwrap();
+    // let line_height = (PIXEL_REWARD_LINE_HEIGHT / 2.0 * screen_scaling) as usize;
 
     filter_and_separate_parts_from_part_box(partial_screenshot, theme)
+
+    // vec![]
+}
+
+pub fn get_surrounding_pixels(x: u32, y: u32) -> [(u32, u32); 8] {
+    [
+        (x.saturating_add(1), y),
+        (x.saturating_sub(1), y),
+        (x, y.saturating_add(1)),
+        (x, y.saturating_sub(1)),
+        (x.saturating_add(1), y.saturating_add(1)),
+        (x.saturating_sub(1), y.saturating_sub(1)),
+        (x.saturating_add(1), y.saturating_sub(1)),
+        (x.saturating_sub(1), y.saturating_add(1)),
+    ]
 }
 
 pub fn filter_and_separate_parts_from_part_box(
@@ -255,15 +125,21 @@ pub fn filter_and_separate_parts_from_part_box(
     let mut _weight = 0.0;
     let mut total_even = 0.0;
     let mut total_odd = 0.0;
+
+    let white = Rgb([255; 3]);
+    let black = Rgb([0; 3]);
+
     for x in 0..filtered.width() {
         let mut count = 0;
+
         for y in 0..filtered.height() {
             let pixel = filtered.get_pixel_mut(x, y);
-            if theme.threshold_filter(*pixel) {
-                *pixel = Rgb([0; 3]);
+
+            if theme.threshold_filter_custom(*pixel, 4.0, 0.16, 0.16) {
+                *pixel = black;
                 count += 1;
             } else {
-                *pixel = Rgb([255; 3]);
+                *pixel = white;
             }
         }
 
@@ -289,9 +165,9 @@ pub fn filter_and_separate_parts_from_part_box(
         }
     }
 
-    // filtered
-    //     .save("filtered.png")
-    //     .expect("Failed to write filtered image");
+    filtered
+        .save("filtered.png")
+        .expect("Failed to write filtered image");
 
     if total_even == 0.0 && total_odd == 0.0 {
         return vec![];
@@ -317,10 +193,33 @@ pub fn filter_and_separate_parts_from_part_box(
     let dynamic_image = DynamicImage::ImageRgb8(filtered);
     for i in 0..player_count {
         let cropped = dynamic_image.crop_imm(curr_left + i * box_width, 0, box_width, box_height);
-        // cropped
-        //     .save(format!("part-{}.png", i))
-        //     .expect("Failed to write image");
-        images.push(cropped);
+        let mut cropped = cropped.to_rgb8();
+
+        let top_half = cropped.height() / 2;
+
+        let mut top_half_count = 0;
+
+        for (_, y, pixel) in cropped.enumerate_pixels() {
+            if y < top_half && *pixel == black {
+                top_half_count += 1;
+            }
+        }
+
+        debug!("[Part: {i}] top half count: {top_half_count}");
+
+        if top_half_count > 0 && top_half_count <= 300 {
+            for (_, y, pixel) in cropped.enumerate_pixels_mut() {
+                if y < top_half {
+                    *pixel = Rgb([255; 3]);
+                }
+            }
+        }
+
+        cropped
+            .save(format!("part-{}.png", i))
+            .expect("Failed to write image");
+
+        images.push(cropped.into());
     }
 
     images
