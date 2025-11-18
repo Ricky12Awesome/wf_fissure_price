@@ -1,135 +1,135 @@
-{
-  "Legacy": {
+[
+  {
     "name": "Legacy",
     "primary": "#ffffff",
     "primary_threshold": [2.0, 0.05, 0.05],
     "secondary": "#e8d55d",
     "secondary_threshold": [4.0, 0.15, 0.15]
   },
-  "Tenno": {
+  {
     "name": "Tenno",
     "primary": "#094e6a",
     "primary_threshold": [2.0, 0.16, 0.16],
     "secondary": "#066d4a",
     "secondary_threshold": [2.0, 0.16, 0.16]
   },
-  "Baruuk": {
+  {
     "name": "Baruuk",
     "primary": "#eec169",
     "primary_threshold": [4.0, 0.16, 0.05],
     "secondary": "#ecd3a2",
     "secondary_threshold": [2.0, 0.16, 0.05]
   },
-  "DarkLotus": {
+  {
     "name": "DarkLotus",
     "primary": "#8c7793",
     "primary_threshold": [8.0, 0.05, 0.05],
     "secondary": "#c8a9ed",
     "secondary_threshold": [2.0, 0.16, 0.16]
   },
-  "Pom2": {
+  {
     "name": "Pom2",
     "primary": "#82e097",
     "primary_threshold": [2.0, 0.25, 0.1],
     "secondary": "#02c82c",
     "secondary_threshold": [2.0, 0.05, 0.05]
   },
-  "Equinox": {
+  {
     "name": "Equinox",
     "primary": "#9e9fa7",
     "primary_threshold": [8.0, 0.25, 0.1],
     "secondary": "#e8e3e3",
     "secondary_threshold": [16.0, 0.25, 0.1]
   },
-  "Stalker": {
+  {
     "name": "Stalker",
     "primary": "#991f23",
     "primary_threshold": [2.0, 0.05, 0.05],
     "secondary": "#ff3d33",
     "secondary_threshold": [2.0, 0.05, 0.05]
   },
-  "Grineer": {
+  {
     "name": "Grineer",
     "primary": "#ffbd66",
     "primary_threshold": [8.0, 0.15, 0.1],
     "secondary": "#ffe099",
     "secondary_threshold": [16.0, 0.2, 0.05]
   },
-  "Orokin": {
+  {
     "name": "Orokin",
     "primary": "#14291d",
     "primary_threshold": [8.0, 0.35, 0.1],
     "secondary": "#b27d05",
     "secondary_threshold": [2.0, 0.15, 0.05]
   },
-  "Lotus": {
+  {
     "name": "Lotus",
     "primary": "#24b8f2",
     "primary_threshold": [4.0, 0.16, 0.1],
     "secondary": "#fff1bf",
     "secondary_threshold": [16.0, 0.15, 0.05]
   },
-  "HighContrast": {
+  {
     "name": "HighContrast",
     "primary": "#66b0ff",
     "primary_threshold": [8.0, 0.1, 0.05],
     "secondary": "#ffff00",
     "secondary_threshold": [2.0, 0.05, 0.05]
   },
-  "Vitruvian": {
+  {
     "name": "Vitruvian",
     "primary": "#bea966",
     "primary_threshold": [4.0, 0.16, 0.08],
     "secondary": "#f5e3ad",
     "secondary_threshold": [8.0, 0.28, 0.1]
   },
-  "Fortuna": {
+  {
     "name": "Fortuna",
     "primary": "#3969c0",
     "primary_threshold": [2.0, 0.125, 0.075],
     "secondary": "#ff73e6",
     "secondary_threshold": [8.0, 0.2, 0.1]
   },
-  "Corpus": {
+  {
     "name": "Corpus",
     "primary": "#23c9f5",
     "primary_threshold": [8.0, 0.125, 0.2],
     "secondary": "#6fe5fd",
     "secondary_threshold": [16.0, 0.2, 0.05]
   },
-  "Nidus": {
+  {
     "name": "Nidus",
     "primary": "#8c265c",
     "primary_threshold": [4.0, 0.25, 0.075],
     "secondary": "#f5495d",
     "secondary_threshold": [2.0, 0.05, 0.05]
   },
-  "Conquera": {
+  {
     "name": "Conquera",
     "primary": "#ffffff",
     "primary_threshold": [2.0, 0.05, 0.05],
     "secondary": "#f5e3ad",
     "secondary_threshold": [16.0, 0.16, 0.075]
   },
-  "Deadlock": {
+  {
     "name": "Deadlock",
     "primary": "#ffffff",
     "primary_threshold": [2.0, 0.05, 0.05],
     "secondary": "#e5d46c",
     "secondary_threshold": [8.0, 0.175, 0.075]
   },
-  "LunarRenewal": {
+  {
     "name": "LunarRenewal",
     "primary": "#ffffff",
     "primary_threshold": [2.0, 0.05, 0.05],
     "secondary": "#cfb052",
     "secondary_threshold": [4.0, 0.175, 0.075]
   },
-  "ZephyrHarrier": {
+  {
     "name": "ZephyrHarrier",
     "primary": "#fd8402",
     "primary_threshold": [4.0, 0.05, 0.05],
     "secondary": "#ff3500",
     "secondary_threshold": [2.0, 0.05, 0.05]
   }
-}
+]

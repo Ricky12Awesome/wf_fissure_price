@@ -3,7 +3,7 @@ use std::collections::HashMap;
 use std::f32::consts::PI;
 use tesseract::Tesseract;
 
-use crate::theme::Theme;
+use crate::theme::{DEFAULT_THEMES, Theme};
 use image::{DynamicImage, GenericImageView, Pixel, Rgb};
 use log::debug;
 
@@ -33,19 +33,21 @@ pub fn detect_theme(image: &DynamicImage) -> Option<Theme> {
 
     debug!("{line_height} {most_width} {min_width}");
 
+    let themes = DEFAULT_THEMES.clone();
+
     let weights = (line_height as u32..image.height())
         .into_par_iter()
-        .fold(HashMap::new, |mut weights: HashMap<Theme, f32>, y| {
+        .fold(HashMap::new, |mut weights: HashMap<String, f32>, y| {
             let perc = (y as f32 - line_height) / (image.height() as f32 - line_height);
             let total_width = min_width * perc + min_width;
             for x in 0..total_width as u32 {
-                let closest = Theme::closest_from_color(
+                let closest = themes.closest_from_color(
                     image
                         .get_pixel(x + (most_width - total_width) as u32 / 2, y)
                         .to_rgb(),
                 );
 
-                *weights.entry(closest.0).or_insert(0.0) += 1.0 / (1.0 + closest.1).powi(4)
+                *weights.entry(closest.0.name).or_insert(0.0) += 1.0 / (1.0 + closest.1).powi(4)
             }
             weights
         })
@@ -64,7 +66,9 @@ pub fn detect_theme(image: &DynamicImage) -> Option<Theme> {
         .0
         .to_owned();
 
-    debug!("Detected Theme: {:?}", result);
+    let result = themes.iter().find(|theme| theme.name == result)?.to_owned();
+
+    debug!("Detected Theme: {:?}", result.name);
 
     Some(result)
 }
