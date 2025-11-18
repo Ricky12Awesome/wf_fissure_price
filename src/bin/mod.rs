@@ -1,9 +1,9 @@
 use image::DynamicImage;
 use wf_fissure_price::ocr;
-use wf_fissure_price::wfinfo::{load_price_data_from_reader, Items};
+use wf_fissure_price::wfinfo::{Items, load_price_data_from_reader};
 
 pub fn run(image: DynamicImage) -> anyhow::Result<()> {
-    let text = ocr::reward_image_to_reward_names(image, None)?;
+    let text = ocr::reward_image_to_reward_names(image, None, None)?;
 
     // https://api.warframestat.us/wfinfo/prices
     let file = std::fs::File::open("prices.json")?;

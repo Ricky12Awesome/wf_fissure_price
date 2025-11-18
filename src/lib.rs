@@ -2,6 +2,7 @@ use thiserror::Error;
 
 pub mod ocr;
 pub mod theme;
+mod util;
 pub mod wfinfo;
 
 #[derive(Error, Debug)]

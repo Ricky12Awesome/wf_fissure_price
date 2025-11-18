@@ -1,6 +1,14 @@
-use image::Rgb;
+use crate::util::{
+    FILTER_BACKGROUND, FILTER_FOREGROUND, PIXEL_REWARD_LINE_HEIGHT, PIXEL_REWARD_WIDTH, get_scale,
+};
+use image::{DynamicImage, GenericImageView, Pixel, Rgb, RgbImage};
+use log::debug;
 use palette::{FromColor, Hsl, IntoColor, Srgb};
+use rayon::iter::IntoParallelIterator;
+use rayon::iter::ParallelIterator;
 use serde::Deserialize;
+use std::collections::HashMap;
+use std::f32::consts::PI;
 use std::ops::{Deref, DerefMut};
 use std::str::FromStr;
 
@@ -85,6 +93,58 @@ impl Themes {
             .min_by(|a, b| a.1.total_cmp(&b.1))
             .unwrap()
     }
+
+    pub fn detect_theme(&self, image: &DynamicImage) -> Option<&Theme> {
+        debug!("Detecting theme");
+        let screen_scaling = get_scale(image);
+
+        let line_height = PIXEL_REWARD_LINE_HEIGHT / 2.0 * screen_scaling;
+        let most_width = PIXEL_REWARD_WIDTH * screen_scaling;
+
+        let min_width = most_width / 4.0;
+
+        debug!("{line_height} {most_width} {min_width}");
+
+        let weights = (line_height as u32..image.height())
+            .into_par_iter()
+            .fold(HashMap::new, |mut weights: HashMap<String, f32>, y| {
+                let perc = (y as f32 - line_height) / (image.height() as f32 - line_height);
+                let total_width = min_width * perc + min_width;
+
+                for x in 0..total_width as u32 {
+                    let closest = self.closest_from_color(
+                        image
+                            .get_pixel(x + (most_width - total_width) as u32 / 2, y)
+                            .to_rgb(),
+                    );
+
+                    *weights.entry(closest.0.name).or_insert(0.0) += 1.0 / (1.0 + closest.1).powi(4)
+                }
+
+                weights
+            })
+            .reduce(HashMap::new, |mut a, b| {
+                for (k, v) in b {
+                    *a.entry(k).or_insert(0.0) += v;
+                }
+
+                a
+            });
+
+        debug!("Weights: {:?}", weights);
+
+        let result = weights
+            .iter()
+            .max_by(|a, b| a.1.total_cmp(b.1))?
+            .0
+            .to_owned();
+
+        let result = self.iter().find(|theme| theme.name == result)?;
+
+        debug!("Detected Theme: {:?}", result.name);
+
+        Some(result)
+    }
 }
 
 impl Theme {
@@ -102,6 +162,52 @@ impl Theme {
         let [threshold_h, threshold_s, threshold_l] = self.primary_threshold;
 
         threshold_filter_custom(self.primary, color, threshold_h, threshold_s, threshold_l)
+    }
+
+    pub fn filter(&self, image: DynamicImage) -> (RgbImage, (f32, f32)) {
+        let mut filtered = image.into_rgb8();
+
+        let mut _weight = 0.0;
+        let mut total_even = 0.0;
+        let mut total_odd = 0.0;
+
+        for x in 0..filtered.width() {
+            let mut count = 0;
+
+            for y in 0..filtered.height() {
+                let pixel = filtered.get_pixel_mut(x, y);
+
+                if self.threshold_filter_custom(*pixel, 4.0, 0.16, 0.16) {
+                    *pixel = FILTER_FOREGROUND;
+                    count += 1;
+                } else {
+                    *pixel = FILTER_BACKGROUND;
+                }
+            }
+
+            count = count.min(filtered.height() / 3);
+            let cosine = (8.0 * x as f32 * PI / filtered.width() as f32).cos();
+            let cosine_thing = cosine.powi(3);
+
+            // filtered.put_pixel(
+            //     x,
+            //     ((cosine_thing / 2.0 + 0.5) * (filtered.height() - 1) as f32) as u32,
+            //     Rgb([255, 0, 0]),
+            // );
+
+            // debug!("{}", cosine_thing);
+
+            let this_weight = cosine_thing * count as f32;
+            _weight += this_weight;
+
+            if cosine < 0.0 {
+                total_even -= this_weight;
+            } else if cosine > 0.0 {
+                total_odd += this_weight;
+            }
+        }
+
+        (filtered, (total_even, total_odd))
     }
 }
 
