@@ -1,5 +1,6 @@
 mod bin;
 
-fn main() -> anyhow::Result<()> {
-    bin::main()
+#[tokio::main]
+async fn main() -> anyhow::Result<()> {
+    bin::_main().await
 }
