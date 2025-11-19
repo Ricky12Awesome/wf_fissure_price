@@ -62,7 +62,7 @@ pub fn filter_and_separate_parts_from_part_box(
     let (filtered, (total_even, total_odd)) = theme.filter(image);
 
     filtered
-        .save("filtered.png")
+        .save("../test-images/other/filtered.png")
         .expect("Failed to write filtered image");
 
     if total_even == 0.0 && total_odd == 0.0 {

@@ -71,7 +71,7 @@ pub fn color_difference(colors: (Hsl, Hsl)) -> f32 {
         * 255.0
 }
 
-const DEFAULT_THEME_JSON: &str = include_str!("../assets/themes.json");
+const DEFAULT_THEME_JSON: &str = include_str!("../../assets/themes.json");
 
 lazy_static::lazy_static!(
     pub static ref DEFAULT_THEMES: Themes = serde_json::from_str(DEFAULT_THEME_JSON).unwrap();

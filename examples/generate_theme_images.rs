@@ -1,4 +1,5 @@
-use image::imageops::FilterType;
+use wf_fissure_price_lib::image;
+use wf_fissure_price_lib::image::imageops::FilterType;
 
 // Offsets are based on a 1440p screenshot
 const X_OFFSET: f32 = 250.0;

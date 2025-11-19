@@ -1,6 +1,14 @@
-use image::DynamicImage;
-use wf_fissure_price::ocr;
-use wf_fissure_price::wfinfo::{load_price_data_from_reader, Items};
+pub use wf_fissure_price_lib as lib;
+pub use tokio;
+pub use tokio_stream;
+pub use anyhow;
+pub use env_logger;
+pub use ashpd;
+pub use x11rb;
+
+use lib::image::DynamicImage;
+use lib::ocr;
+use lib::wfinfo::{Items, load_price_data_from_reader};
 
 pub fn run(image: DynamicImage) -> anyhow::Result<()> {
     let text = ocr::reward_image_to_reward_names(image, None, None)?;
@@ -53,9 +61,7 @@ fn keybind_x11() -> anyhow::Result<()> {
 }
 
 async fn keybind() -> anyhow::Result<()> {
-    use ashpd::desktop::global_shortcuts::{
-        GlobalShortcuts, NewShortcut,
-    };
+    use ashpd::desktop::global_shortcuts::{GlobalShortcuts, NewShortcut};
     use tokio_stream::StreamExt;
 
     let portal = GlobalShortcuts::new().await?;
@@ -64,11 +70,9 @@ async fn keybind() -> anyhow::Result<()> {
 
     // Define new shortcut(s)
     let shortcut = NewShortcut::new("my_action", "Do Something");
-        // .preferred_trigger(Some("Ctrl+Alt+M"));
+    // .preferred_trigger(Some("Ctrl+Alt+M"));
 
-    let request = portal
-        .bind_shortcuts(&session, &[shortcut], None)
-        .await?;
+    let request = portal.bind_shortcuts(&session, &[shortcut], None).await?;
 
     let response = request.response()?;
 
@@ -85,20 +89,15 @@ async fn keybind() -> anyhow::Result<()> {
 
     while let Some(_) = activated.next().await {
         println!("Triggered Wayland");
-
     }
 
     Ok(())
 }
 
-
-pub(crate) async fn _main() -> anyhow::Result<()> {
-    #[cfg(feature = "bin")]
+pub async fn _main() -> anyhow::Result<()> {
     env_logger::init();
 
-    let _ = tokio::spawn(async {
-        keybind_x11()
-    });
+    let _ = tokio::spawn(async { keybind_x11() });
 
     keybind().await?;
 
@@ -111,8 +110,4 @@ pub(crate) async fn _main() -> anyhow::Result<()> {
     // run(img1)?;
 
     Ok(())
-}
-
-fn main() {
-
 }
