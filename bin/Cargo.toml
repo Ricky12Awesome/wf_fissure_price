@@ -1,10 +1,10 @@
 [package]
-name = "wf_fissure_price_bin"
+name = "bin"
 version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-wf_fissure_price_lib = { path = "../lib" }
+lib = { path = "../lib" }
 
 image = { workspace = true }
 serde = { workspace = true }

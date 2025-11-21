@@ -10,8 +10,8 @@ pub use x11rb;
 
 use crate::geometry::Desktop;
 use image::DynamicImage;
-use wf_fissure_price_lib::ocr;
-use wf_fissure_price_lib::wfinfo::{Items, load_price_data_from_reader};
+use lib::ocr;
+use lib::wfinfo::{Items, load_price_data_from_reader};
 
 pub fn run(image: DynamicImage) -> anyhow::Result<()> {
     let text = ocr::reward_image_to_reward_names(image, None, None)?;

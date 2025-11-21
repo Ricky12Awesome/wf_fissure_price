@@ -1,7 +1,7 @@
 use colored::{Color, Colorize};
-use wf_fissure_price_lib::image::{DynamicImage, GenericImage, Rgb, RgbImage};
-use wf_fissure_price_lib::theme::Themes;
-use wf_fissure_price_lib::{image, levenshtein, serde_json, tesseract};
+use lib::image::{DynamicImage, GenericImage, Rgb, RgbImage};
+use lib::theme::Themes;
+use lib::{image, levenshtein, serde_json, tesseract};
 
 const WIDTH: f32 = 900.0;
 const HEIGHT: f32 = 60.0;

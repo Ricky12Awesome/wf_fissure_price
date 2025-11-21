@@ -17,7 +17,7 @@ serde_json = "1.0.145"
 serde-aux = "4.7.0"
 
 [dev-dependencies]
-wf_fissure_price_lib = { path = "lib" }
+lib = { path = "lib" }
 colored = "3.0.0"
 anyhow = "1.0.100"
 

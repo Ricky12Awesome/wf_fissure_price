@@ -1,7 +1,7 @@
 use std::fs::DirEntry;
-use wf_fissure_price_lib::image;
-use wf_fissure_price_lib::image::imageops::FilterType;
-use wf_fissure_price_lib::rayon::prelude::*;
+use lib::image;
+use lib::image::imageops::FilterType;
+use lib::rayon::prelude::*;
 
 fn scale(theme: DirEntry) -> anyhow::Result<()> {
     let name = theme.path();

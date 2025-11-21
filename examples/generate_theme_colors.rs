@@ -1,6 +1,6 @@
 use std::collections::HashMap;
-use wf_fissure_price_lib::image;
-use wf_fissure_price_lib::serde_json;
+use lib::image;
+use lib::serde_json;
 
 fn main() -> anyhow::Result<()> {
     // let scale = get_scale()
