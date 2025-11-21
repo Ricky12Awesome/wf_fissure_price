@@ -141,6 +141,7 @@ pub fn load_price_data_from_reader(json: impl Read) -> crate::Result<Vec<PriceIt
 pub struct Item {
     tokens: Vec<String>,
     item: PriceItem,
+    len: usize,
 }
 
 impl Item {
@@ -151,6 +152,7 @@ impl Item {
                 .split_ascii_whitespace()
                 .map(str::to_owned)
                 .collect(),
+            len: item.name.len(),
             item,
         }
     }
@@ -159,31 +161,57 @@ impl Item {
 #[derive(Debug, Clone)]
 pub struct Items {
     tokens: Vec<Item>,
+    min_len: usize,
+    max_len: usize,
 }
 
 impl Items {
     pub fn new(items: Vec<PriceItem>) -> Self {
+        if items.is_empty() {
+            return Self {
+                tokens: vec![],
+                min_len: 0,
+                max_len: 0,
+            };
+        }
+
+        let tokens = items
+            .into_iter()
+            .filter(|item| !item.name.ends_with("Set"))
+            .map(Item::new)
+            .collect::<Vec<_>>();
+
+        let min_len = tokens.iter().map(|item| item.len).min().unwrap_or(0);
+        let max_len = tokens.iter().map(|item| item.len).max().unwrap_or(0);
+
         Self {
-            tokens: items
-                .into_iter()
-                .filter(|item| !item.name.ends_with("Set"))
-                .map(Item::new)
-                .collect(),
+            tokens,
+            min_len,
+            max_len,
         }
     }
 }
 
 impl Items {
     pub fn find_item(&self, item_name: &str) -> Option<PriceItem> {
+        let item_name = item_name.trim();
+
+        if !(self.min_len..=self.max_len).contains(&item_name.len()) {
+            return None;
+        }
+
         let mut current_matches = self.tokens.clone();
 
         for (i, token) in item_name.split_ascii_whitespace().enumerate() {
             let best_match = current_matches
                 .iter()
                 .filter(|item| i < item.tokens.len())
-                .min_by_key(|item| levenshtein::levenshtein(&item.tokens[i], token));
+                .map(|item| (item, levenshtein::levenshtein(&item.tokens[i], token)))
+                // .inspect(|(item, score)| println!("{} {score}", item.tokens[i]))
+                .filter(|(item, score)| item.tokens[i].len() / 3 >= *score)
+                .min_by_key(|(_, score)| *score);
 
-            let Some(best_match) = best_match else {
+            let Some((best_match, score)) = best_match else {
                 continue;
             };
 

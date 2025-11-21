@@ -1,5 +1,5 @@
 use crate::util::{
-    FILTER_BACKGROUND, FILTER_FOREGROUND, PIXEL_REWARD_LINE_HEIGHT, PIXEL_REWARD_WIDTH, get_scale,
+    FILTER_BACKGROUND, FILTER_FOREGROUND, PIXEL_REWARD_LINE_HEIGHT, PIXEL_REWARD_WIDTH,
 };
 use image::{DynamicImage, GenericImageView, Pixel, Rgb, RgbImage};
 use log::debug;
@@ -94,12 +94,10 @@ impl Themes {
             .unwrap()
     }
 
-    pub fn detect_theme(&self, image: &DynamicImage) -> Option<&Theme> {
+    pub fn detect_theme(&self, image: &DynamicImage, scale: f32) -> Option<&Theme> {
         debug!("Detecting theme");
-        let screen_scaling = get_scale(image);
-
-        let line_height = PIXEL_REWARD_LINE_HEIGHT / 2.0 * screen_scaling;
-        let most_width = PIXEL_REWARD_WIDTH * screen_scaling;
+        let line_height = PIXEL_REWARD_LINE_HEIGHT / 2.0 * scale;
+        let most_width = PIXEL_REWARD_WIDTH * scale;
 
         let min_width = most_width / 4.0;
 

@@ -2,13 +2,15 @@ use thiserror::Error;
 
 pub mod ocr;
 pub mod theme;
-mod util;
+pub mod util;
 pub mod wfinfo;
 
 #[derive(Error, Debug)]
 pub enum Error {
     #[error("Unknown Theme")]
     UnknownTheme,
+    #[error("Window is not right size, width must be greater then height")]
+    InvalidWindowSize,
     #[error("Invalid Image Format")]
     InvalidImageFormat,
     #[error(transparent)]

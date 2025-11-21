@@ -8,14 +8,13 @@ use crate::util::{
 use image::DynamicImage;
 use log::debug;
 
-pub fn extract_parts(image: &DynamicImage, theme: &Theme) -> Vec<DynamicImage> {
+pub fn extract_parts(image: &DynamicImage, theme: &Theme, scale: f32) -> Vec<DynamicImage> {
     // image.save("input.png").unwrap();
-    let screen_scaling = get_scale(image);
     let width = image.width() as f32;
-    let reward_y = PIXEL_REWARD_Y * screen_scaling;
-    let reward_width = PIXEL_REWARD_WIDTH * screen_scaling;
-    let reward_height = PIXEL_REWARD_HEIGHT * screen_scaling;
-    let reward_line = PIXEL_REWARD_LINE_HEIGHT * screen_scaling;
+    let reward_y = PIXEL_REWARD_Y * scale;
+    let reward_width = PIXEL_REWARD_WIDTH * scale;
+    let reward_height = PIXEL_REWARD_HEIGHT * scale;
+    let reward_line = PIXEL_REWARD_LINE_HEIGHT * scale;
 
     // top left corner
     let x = (width / 2.0) - (reward_width / 2.0);
@@ -42,19 +41,6 @@ pub fn extract_parts(image: &DynamicImage, theme: &Theme) -> Vec<DynamicImage> {
     // vec![]
 }
 
-pub fn get_surrounding_pixels(x: u32, y: u32) -> [(u32, u32); 8] {
-    [
-        (x.saturating_add(1), y),
-        (x.saturating_sub(1), y),
-        (x, y.saturating_add(1)),
-        (x, y.saturating_sub(1)),
-        (x.saturating_add(1), y.saturating_add(1)),
-        (x.saturating_sub(1), y.saturating_sub(1)),
-        (x.saturating_add(1), y.saturating_sub(1)),
-        (x.saturating_sub(1), y.saturating_add(1)),
-    ]
-}
-
 pub fn filter_and_separate_parts_from_part_box(
     image: DynamicImage,
     theme: &Theme,
@@ -62,7 +48,7 @@ pub fn filter_and_separate_parts_from_part_box(
     let (filtered, (total_even, total_odd)) = theme.filter(image);
 
     filtered
-        .save("../test-images/other/filtered.png")
+        .save("test-images/other/filtered.png")
         .expect("Failed to write filtered image");
 
     if total_even == 0.0 && total_odd == 0.0 {
@@ -157,11 +143,13 @@ pub fn reward_image_to_reward_names(
     theme: Option<&Theme>,
 ) -> crate::Result<Vec<String>> {
     let themes = themes.unwrap_or(&DEFAULT_THEMES);
+    let scale = get_scale(&image).ok_or_else(|| crate::Error::InvalidWindowSize)?;
+
     let theme = theme
-        .or_else(|| themes.detect_theme(&image))
+        .or_else(|| themes.detect_theme(&image, scale))
         .ok_or(crate::Error::UnknownTheme)?;
 
-    let parts = extract_parts(&image, theme);
+    let parts = extract_parts(&image, theme, scale);
 
     debug!("Extracted part images");
 

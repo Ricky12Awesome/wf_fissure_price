@@ -1,14 +1,17 @@
-pub use wf_fissure_price_lib as lib;
+mod geometry;
+
+pub use anyhow;
+pub use ashpd;
+pub use env_logger;
+use std::time::Instant;
 pub use tokio;
 pub use tokio_stream;
-pub use anyhow;
-pub use env_logger;
-pub use ashpd;
 pub use x11rb;
 
-use lib::image::DynamicImage;
-use lib::ocr;
-use lib::wfinfo::{Items, load_price_data_from_reader};
+use crate::geometry::Desktop;
+use image::DynamicImage;
+use wf_fissure_price_lib::ocr;
+use wf_fissure_price_lib::wfinfo::{Items, load_price_data_from_reader};
 
 pub fn run(image: DynamicImage) -> anyhow::Result<()> {
     let text = ocr::reward_image_to_reward_names(image, None, None)?;
@@ -19,10 +22,14 @@ pub fn run(image: DynamicImage) -> anyhow::Result<()> {
 
     let items = Items::new(data);
 
-    for item in text {
-        print!("{}", item);
-        let item = items.find_item(&item).unwrap();
-        print!(" -> {}", item.name);
+    for item_og in text {
+        let Some(item) = items.find_item(&item_og) else {
+            println!("[ {item_og} ]: not found");
+            continue;
+        };
+
+        print!("[ {item_og} ]: ");
+        print!("{}", item.name);
         print!(" [avg: {:.2}, plat: {}]", item.custom_avg, item.get_price());
         print!(" [y: {}, t: {}]", item.yesterday_vol, item.today_vol);
         println!()
@@ -88,7 +95,34 @@ async fn keybind() -> anyhow::Result<()> {
     let mut activated = portal.receive_activated().await?;
 
     while let Some(_) = activated.next().await {
-        println!("Triggered Wayland");
+        use ashpd::desktop::screenshot::Screenshot;
+
+        let ss = Screenshot::request()
+            .interactive(false)
+            .modal(false)
+            .send()
+            .await?;
+
+        let ss = ss.response()?;
+        let timer = Instant::now();
+        let image = image::open(ss.uri().path())?;
+        println!("Opening took: {:?}", timer.elapsed());
+
+        let window = Desktop::detect().get_active_window()?;
+        let [x, y] = window.at;
+        let [w, h] = window.size;
+
+        // let timer = Instant::now();
+        let image = image.crop_imm(x, y, w, h);
+        // let image = image.resize(image.width() / 8, image.height() / 8, FilterType::Nearest);
+        // image.save("ss.png")?;
+        // println!("Saving: {:?}", timer.elapsed());
+
+        let result = run(image);
+
+        if let Err(e) = result {
+            eprintln!("{e}");
+        }
     }
 
     Ok(())
@@ -97,11 +131,14 @@ async fn keybind() -> anyhow::Result<()> {
 pub async fn _main() -> anyhow::Result<()> {
     env_logger::init();
 
-    let _ = tokio::spawn(async { keybind_x11() });
+    // let _ = tokio::spawn(async { keybind_x11() });
 
     keybind().await?;
 
+    // let img1 = image::open("test-images/1.png")?;
     // let img1 = image::open("test-images/2.png")?;
+    // let img1 = image::open("test-images/3.png")?;
+    // let img1 = image::open("ss.png")?;
     // let img2 = img1.resize(2560, 1440, FilterType::Nearest);
     // img2.save("./test-images/2.png")?;
     // let img3 = img1.resize(3840, 2160, FilterType::Lanczos3);
