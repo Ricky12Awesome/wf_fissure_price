@@ -24,4 +24,4 @@ anyhow = "1.0.100"
 [features]
 
 [workspace]
-members = ["bin", "cli", "lib"]
+members = ["bin", "cli", "lib", "overlay"]

@@ -1,0 +1,11 @@
+[package]
+name = "overlay"
+version = "0.1.0"
+edition = "2024"
+
+[dependencies]
+wayland-client = "0.31"
+wayland-protocols-wlr = { version = "0.3.9", features = ["client"] }
+femtovg = "0.19.3"
+egl = "0.2.7"
+wayland-egl = "0.32.8"
