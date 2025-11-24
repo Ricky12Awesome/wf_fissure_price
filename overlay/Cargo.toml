@@ -4,8 +4,16 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-wayland-client = "0.31"
-wayland-protocols-wlr = { version = "0.3.9", features = ["client"] }
 femtovg = "0.19.3"
 egl = "0.2.7"
-wayland-egl = "0.32.8"
+thiserror = { workspace = true }
+
+# Wayland Deps
+wayland-client = { version = "0.31", optional = true }
+wayland-protocols-wlr = { version = "0.3.9", optional = true, features = ["client"] }
+wayland-egl = { version = "0.32.8", optional = true }
+
+[features]
+default = ["wayland", "x11"]
+wayland = ["dep:wayland-client", "dep:wayland-protocols-wlr", "dep:wayland-egl"]
+x11 = []

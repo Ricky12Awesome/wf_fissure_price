@@ -2219,6 +2219,7 @@ version = "0.1.0"
 dependencies = [
  "egl",
  "femtovg",
+ "thiserror 2.0.17",
  "wayland-client",
  "wayland-egl",
  "wayland-protocols-wlr",
