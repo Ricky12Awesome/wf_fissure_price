@@ -3,6 +3,8 @@
 use crate::wfinfo::price_data::PriceItem;
 use serde::Deserialize;
 use std::io::Read;
+use serde::de::DeserializeOwned;
+use crate::wfinfo::item_data::{DucatItem, FilteredItems};
 
 pub mod price_data {
     use super::*;
@@ -13,19 +15,7 @@ pub mod price_data {
     pub struct PriceItem {
         pub name: String,
         #[serde(deserialize_with = "serde_aux::prelude::deserialize_number_from_string")]
-        pub yesterday_vol: u32,
-        #[serde(deserialize_with = "serde_aux::prelude::deserialize_number_from_string")]
-        pub today_vol: u32,
-        #[serde(deserialize_with = "serde_aux::prelude::deserialize_number_from_string")]
         pub custom_avg: f32,
-    }
-
-    impl PriceItem {
-        pub fn get_price(&self) -> u32 {
-            let (min, max) = self.yesterday_vol.min_max(self.today_vol);
-
-            min + ((max - min) / 2)
-        }
     }
 }
 
@@ -130,23 +120,25 @@ pub mod item_data {
     }
 }
 
-pub fn load_price_data_from_str(json: &str) -> crate::Result<Vec<PriceItem>> {
-    serde_json::from_str::<Vec<PriceItem>>(json).map_err(Into::into)
+pub fn load_from_str<T: DeserializeOwned>(json: &str) -> crate::Result<T> {
+    serde_json::from_str::<T>(json).map_err(Into::into)
 }
 
-pub fn load_price_data_from_reader(json: impl Read) -> crate::Result<Vec<PriceItem>> {
-    serde_json::from_reader::<_, Vec<PriceItem>>(json).map_err(Into::into)
+pub fn load_from_reader<T: DeserializeOwned>(json: impl Read) -> crate::Result<T> {
+    serde_json::from_reader::<_, T>(json).map_err(Into::into)
 }
 
 #[derive(Debug, Clone)]
 pub struct Item {
     tokens: Vec<String>,
-    item: PriceItem,
+    pub name: String,
+    pub platinum: f32,
+    pub ducats: usize,
     len: usize,
 }
 
 impl Item {
-    pub fn new(item: PriceItem) -> Self {
+    pub fn from_price_item(item: PriceItem) -> Self {
         Self {
             tokens: item
                 .name
@@ -154,39 +146,55 @@ impl Item {
                 .map(str::to_owned)
                 .collect(),
             len: item.name.len(),
-            item,
+            name: item.name,
+            platinum: item.custom_avg,
+            ducats: 0,
+        }
+    }
+
+    pub fn from_ducat_item(name: String, item: DucatItem) -> Self {
+        Self {
+            tokens:
+                name
+                .split_ascii_whitespace()
+                .map(str::to_owned)
+                .collect(),
+            len: name.len(),
+            name,
+            platinum: 0.0,
+            ducats: item.ducats,
         }
     }
 }
 
 #[derive(Debug, Clone)]
 pub struct Items {
-    tokens: Vec<Item>,
+    items: Vec<Item>,
     min_len: usize,
     max_len: usize,
 }
 
 impl Items {
-    pub fn new(items: Vec<PriceItem>) -> Self {
-        if items.is_empty() {
+    pub fn new(price_items: Vec<PriceItem>, filtered_items: FilteredItems) -> Self {
+        if price_items.is_empty() {
             return Self {
-                tokens: vec![],
+                items: vec![],
                 min_len: 0,
                 max_len: 0,
             };
         }
 
-        let tokens = items
+        let tokens = price_items
             .into_iter()
             .filter(|item| !item.name.ends_with("Set"))
-            .map(Item::new)
+            .map(Item::from_price_item)
             .collect::<Vec<_>>();
 
         let min_len = tokens.iter().map(|item| item.len).min().unwrap_or(0);
         let max_len = tokens.iter().map(|item| item.len).max().unwrap_or(0);
 
         Self {
-            tokens,
+            items: tokens,
             min_len,
             max_len,
         }
@@ -194,14 +202,14 @@ impl Items {
 }
 
 impl Items {
-    pub fn find_item(&self, item_name: &str) -> Option<PriceItem> {
+    pub fn find_item(&self, item_name: &str) -> Option<Item> {
         let item_name = item_name.trim();
 
         if !(self.min_len..=self.max_len).contains(&item_name.len()) {
             return None;
         }
 
-        let mut current_matches = self.tokens.clone();
+        let mut current_matches = self.items.clone();
 
         for (i, token) in item_name.split_ascii_whitespace().enumerate() {
             let best_match = current_matches
@@ -224,6 +232,6 @@ impl Items {
                 .collect();
         }
 
-        current_matches.into_iter().map(|item| item.item).next()
+        current_matches.into_iter().next()
     }
 }

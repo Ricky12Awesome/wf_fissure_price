@@ -137,11 +137,11 @@ pub fn image_to_string(image: &DynamicImage) -> crate::Result<String> {
     Ok(result)
 }
 
-pub fn reward_image_to_reward_names(
+pub fn reward_image_to_reward_names<'a>(
     image: DynamicImage,
-    themes: Option<&Themes>,
-    theme: Option<&Theme>,
-) -> crate::Result<Vec<String>> {
+    themes: Option<&'a Themes>,
+    theme: Option<&'a Theme>,
+) -> crate::Result<(Vec<String>, &'a Theme)> {
     let themes = themes.unwrap_or(&DEFAULT_THEMES);
     let scale = get_scale(&image).ok_or_else(|| crate::Error::InvalidWindowSize)?;
 
@@ -153,5 +153,7 @@ pub fn reward_image_to_reward_names(
 
     debug!("Extracted part images");
 
-    parts.iter().map(|image| image_to_string(image)).collect()
+    let text = parts.iter().map(|image| image_to_string(image)).collect::<Result<_, _>>()?;
+
+    Ok((text, theme))
 }

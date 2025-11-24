@@ -1,6 +1,6 @@
 pub mod backend;
 
-use femtovg::{Canvas, Color, Paint, Renderer};
+use femtovg::{Canvas, Paint, Renderer, TextMetrics};
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::time::{Duration, Instant};
@@ -65,9 +65,9 @@ pub trait CanvasExt {
         x: f32,
         y: f32,
         text: impl AsRef<str>,
-        fill_paint: Option<&Paint>,
+        fill_paint: &Paint,
         stroke_paint: Option<&Paint>,
-    ) -> Result<(), femtovg::ErrorKind>;
+    ) -> Result<TextMetrics, femtovg::ErrorKind>;
 }
 
 impl<T: Renderer> CanvasExt for Canvas<T> {
@@ -76,19 +76,17 @@ impl<T: Renderer> CanvasExt for Canvas<T> {
         x: f32,
         y: f32,
         text: impl AsRef<str>,
-        fill_paint: Option<&Paint>,
+        fill_paint: &Paint,
         stroke_paint: Option<&Paint>,
-    ) -> Result<(), femtovg::ErrorKind> {
+    ) -> Result<TextMetrics, femtovg::ErrorKind> {
         let text = text.as_ref();
 
-        if let Some(fill_paint) = fill_paint {
-            self.fill_text(x, y, text, fill_paint)?;
-        }
+        self.fill_text(x, y, text, fill_paint)?;
 
         if let Some(stroke_paint) = stroke_paint {
-            self.fill_text(x, y, text, stroke_paint)?;
+            self.stroke_text(x, y, text, stroke_paint)?;
         }
 
-        Ok(())
+        self.measure_text(x, y, text, fill_paint)
     }
 }

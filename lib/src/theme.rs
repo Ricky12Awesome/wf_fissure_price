@@ -78,6 +78,10 @@ lazy_static::lazy_static!(
 );
 
 impl Themes {
+    pub fn by_name(&self, name: &str) -> Option<&Theme> {
+        self.iter().find(|theme| theme.name == name)
+    }
+
     pub fn closest_from_color(&self, color: Rgb<u8>) -> (Theme, f32) {
         let rgb = Srgb::from_components((
             color.0[0] as f32 / 255.0,

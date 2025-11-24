@@ -10,44 +10,50 @@ pub use tokio;
 pub use tokio_stream;
 pub use x11rb;
 
-use crate::geometry::Desktop;
 use image::DynamicImage;
 use lib::ocr;
-use lib::util::{PIXEL_REWARD_HEIGHT, PIXEL_SINGLE_REWARD_WIDTH, get_scale};
+use lib::palette::Hsl;
+use lib::theme::{DEFAULT_THEMES, Theme};
+use lib::util::{PIXEL_REWARD_HEIGHT, PIXEL_SINGLE_REWARD_WIDTH};
 use lib::wfinfo::price_data::PriceItem;
-use lib::wfinfo::{Items, load_price_data_from_reader};
+use lib::wfinfo::{Item, Items, load_from_reader};
 use overlay::femtovg::{Canvas, Color, Paint, Renderer};
 use overlay::{CanvasExt, OverlayAnchor, OverlayConf, OverlayRenderer, State};
 
-pub fn get_items(image: DynamicImage) -> anyhow::Result<Option<Vec<PriceItem>>> {
-    let text = ocr::reward_image_to_reward_names(image, None, None)?;
+pub fn get_items<'a>(image: DynamicImage) -> anyhow::Result<(Vec<Item>, &'a Theme)> {
+    let (text, theme) = ocr::reward_image_to_reward_names(image, None, None)?;
 
     // https://api.warframestat.us/wfinfo/prices
-    let file = std::fs::File::open("prices.json")?;
-    let data = load_price_data_from_reader(file)?;
+    let prices = std::fs::File::open("prices.json")?;
+    let prices = load_from_reader(prices)?;
+    let filtered_items = std::fs::File::open("filtered_items.json")?;
+    let filtered_items = load_from_reader(filtered_items)?;
 
-    let items = Items::new(data);
+    let items = Items::new(prices, filtered_items);
 
     let mut result = vec![];
     for item_og in text {
         let Some(item) = items.find_item(&item_og) else {
-            return Ok(None);
+            return Ok((vec![], theme));
         };
 
         result.push(item);
     }
 
-    Ok(Some(result))
+    Ok((result, theme))
 }
 
 pub fn test(image: DynamicImage) -> anyhow::Result<()> {
-    let text = ocr::reward_image_to_reward_names(image, None, None)?;
+    let (text, _) = ocr::reward_image_to_reward_names(image, None, None)?;
 
     // https://api.warframestat.us/wfinfo/prices
-    let file = std::fs::File::open("prices.json")?;
-    let data = load_price_data_from_reader(file)?;
+    let prices = std::fs::File::open("prices.json")?;
+    let prices = load_from_reader(prices)?;
+    // https://api.warframestat.us/wfinfo/filtered_items
+    let filtered_items = std::fs::File::open("filtered_items.json")?;
+    let filtered_items = load_from_reader(filtered_items)?;
 
-    let items = Items::new(data);
+    let items = Items::new(prices, filtered_items);
 
     for item_og in text {
         let Some(item) = items.find_item(&item_og) else {
@@ -57,8 +63,7 @@ pub fn test(image: DynamicImage) -> anyhow::Result<()> {
 
         print!("[ {item_og} ]: ");
         print!("{}", item.name);
-        print!(" [avg: {:.2}, plat: {}]", item.custom_avg, item.get_price());
-        print!(" [y: {}, t: {}]", item.yesterday_vol, item.today_vol);
+        print!(" [plat: {}]", item.platinum);
         println!()
     }
 
@@ -160,33 +165,70 @@ async fn run(close_handle: Arc<AtomicBool>, running_handle: Arc<AtomicBool>) -> 
     // let image = image.crop_imm(x, y, w, h);
     //
     // let scale = get_scale(&image).unwrap_or(0.5);
-    // let items = get_items(image)?.unwrap_or_default();
+    // let items = get_items(image)?;
 
     // println!("{}", serde_json::to_string(&items)?);
 
     // testing
-    let items = serde_json::from_str(r#"[{"name":"Octavia Prime Systems","yesterday_vol":113,"today_vol":114,"custom_avg":8.1},{"name":"Octavia Prime Blueprint","yesterday_vol":176,"today_vol":189,"custom_avg":20.4},{"name":"Tenora Prime Blueprint","yesterday_vol":7,"today_vol":20,"custom_avg":3.8},{"name":"Harrow Prime Systems","yesterday_vol":97,"today_vol":119,"custom_avg":29.6}]"#)?;
+    let theme = DEFAULT_THEMES.by_name("Vitruvian").unwrap();
+    let items: Vec<PriceItem> = serde_json::from_str(
+        r#"[{"name":"Octavia Prime Systems","yesterday_vol":113,"today_vol":114,"custom_avg":8.1},{"name":"Octavia Prime Blueprint","yesterday_vol":176,"today_vol":189,"custom_avg":20.4},{"name":"Tenora Prime Blueprint","yesterday_vol":7,"today_vol":20,"custom_avg":3.8},{"name":"Harrow Prime Systems","yesterday_vol":97,"today_vol":119,"custom_avg":29.6}]"#,
+    )?;
     let scale = 1440.0 / 2160.0;
+    // let scale = 1080.0 / 2160.0;
+    // let scale = 2160.0 / 2160.0;
 
-    let overlay = Overlay { scale, items };
+    if items.is_empty() {
+        return Ok(());
+    }
+
+    let highest = items
+        .iter()
+        .max_by_key(|item| item.custom_avg.floor() as u32)
+        .unwrap();
+
+    let overlay = Overlay {
+        scale,
+        highest: highest.name.clone(),
+        items,
+        theme,
+    };
 
     show_overlay(overlay, close_handle, running_handle)
 }
 
-struct Overlay {
+struct Overlay<'a> {
     scale: f32,
     items: Vec<PriceItem>,
+    highest: String,
+    theme: &'a Theme,
 }
 
-impl<T: Renderer> OverlayRenderer<T> for Overlay {
+fn color_from_hsl(hsl: Hsl) -> Color {
+    let Hsl {
+        hue,
+        saturation,
+        lightness,
+        ..
+    } = hsl;
+    let hue = hue.into_positive_degrees() / 360.0;
+
+    Color::hsl(hue, saturation, lightness)
+}
+
+impl<T: Renderer> OverlayRenderer<T> for Overlay<'_> {
     fn draw(&mut self, canvas: &mut Canvas<T>, state: &State) -> Result<(), overlay::Error> {
-        let item_paint = Paint::color(Color::hsl(0.0, 0.0, 0.9))
-            .with_line_width(16.0 * self.scale)
+        let pixel_single_reward_width = PIXEL_SINGLE_REWARD_WIDTH * self.scale;
+
+        let primary = Paint::color(color_from_hsl(self.theme.primary))
+            .with_line_width(1.0 * self.scale)
             .with_font_size(38.0 * self.scale);
 
-        let plat_paint = item_paint
+        let secondary = primary
             .clone() //
-            .with_color(Color::hsl(0.5, 0.2, 0.9));
+            .with_color(color_from_hsl(self.theme.secondary));
+
+        let fs = primary.font_size();
 
         canvas.clear_rect(
             0,
@@ -196,30 +238,64 @@ impl<T: Renderer> OverlayRenderer<T> for Overlay {
             Color::rgba(0, 0, 0, 128),
         );
 
+        let mut line = overlay::femtovg::Path::new();
+        line.rect(0.0, fs * 1.2, state.width, 1. * self.scale);
+        canvas.fill_path(&line, &secondary);
+
         for (i, item) in self.items.iter().enumerate() {
             let i = i as f32;
-            let x = (PIXEL_SINGLE_REWARD_WIDTH * self.scale) * i;
-            let y = item_paint.font_size() * 2.0 * self.scale;
+            let x = pixel_single_reward_width * i;
 
-            canvas.draw_text(x, y, &item.name, Some(&item_paint), None)?;
-            canvas.fill_text(
-                x,
-                y * 2.,
-                format!("Plat avg: {:.2}", item.custom_avg),
-                &plat_paint,
+            let offset = canvas.measure_text(x, fs, &item.name, &primary)?;
+            let offset = (pixel_single_reward_width - offset.width()) / 2.0;
+
+            if self.highest == item.name {
+                canvas.fill_text(x + offset, fs, &item.name, &secondary)?;
+            } else {
+                canvas.fill_text(x + offset, fs, &item.name, &primary)?;
+            }
+
+            let y = fs * 2.333;
+            let text = "Platinum: ";
+            let offset =
+                canvas.measure_text(y, fs, &format!("{text}{}", item.custom_avg), &secondary)?;
+            let offset = (pixel_single_reward_width - offset.width()) / 2.0;
+            let avg = canvas.draw_text(offset + x, y, text, &primary, None)?;
+
+            canvas.draw_text(
+                offset + avg.width() + x,
+                y, //
+                format!("{}", item.custom_avg),
+                &secondary,
+                None,
             )?;
-            canvas.fill_text(
-                x,
-                y * 3.,
-                format!("Plat today: {:.2}", item.today_vol),
-                &plat_paint,
-            )?;
-            canvas.fill_text(
-                x,
-                y * 4.,
-                format!("Plat yesterday: {:.2}", item.yesterday_vol),
-                &plat_paint,
-            )?;
+
+            if item.name == self.highest {
+                // let y = fs * 5.0;
+                // let highest_pri = primary.clone().with_font_size(fs * 2.5);
+                // let highest_sec = secondary
+                //     .clone()
+                //     .with_font_size(highest_pri.font_size())
+                //     .with_line_width(3.0 * self.scale);
+                //
+                // let offset = canvas.measure_text(y, fs, "Highest!", &highest_pri)?;
+                // let offset = (pixel_single_reward_width - offset.width()) / 2.0;
+                //
+                // canvas.draw_text(offset + x, y, "Highest", &highest_sec, Some(&highest_pri))?;
+            }
+
+            if i as usize == self.items.len() - 1 {
+                continue;
+            }
+
+            let mut line = overlay::femtovg::Path::new();
+            line.rect(
+                pixel_single_reward_width + (pixel_single_reward_width * i),
+                0.0,
+                1. * self.scale,
+                state.height,
+            );
+            canvas.fill_path(&line, &secondary);
         }
 
         Ok(())
@@ -235,7 +311,7 @@ fn show_overlay(
         width: ((PIXEL_SINGLE_REWARD_WIDTH * overlay.items.len() as f32) * overlay.scale) as u32,
         height: ((PIXEL_REWARD_HEIGHT / 2.0) * overlay.scale) as u32,
         anchor: OverlayAnchor::Bottom,
-        anchor_offset: 650,
+        anchor_offset: (1000.0 * overlay.scale) as u32,
         close_handle,
         running_handle,
         ..OverlayConf::default()
