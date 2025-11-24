@@ -1,10 +1,11 @@
 #![allow(unused)]
 
+use crate::wfinfo::item_data::{DucatItem, FilteredItems};
 use crate::wfinfo::price_data::PriceItem;
 use serde::Deserialize;
-use std::io::Read;
 use serde::de::DeserializeOwned;
-use crate::wfinfo::item_data::{DucatItem, FilteredItems};
+use std::collections::HashMap;
+use std::io::Read;
 
 pub mod price_data {
     use super::*;
@@ -62,12 +63,12 @@ pub mod item_data {
     #[derive(Clone, Debug, Deserialize)]
     pub struct Relic {
         pub vaulted: bool,
-        pub rare1: String,
-        pub uncommon1: String,
-        pub uncommon2: String,
-        pub common1: String,
-        pub common2: String,
-        pub common3: String,
+        pub rare1: Option<String>,
+        pub uncommon1: Option<String>,
+        pub uncommon2: Option<String>,
+        pub common1: Option<String>,
+        pub common2: Option<String>,
+        pub common3: Option<String>,
     }
 
     #[derive(Clone, Debug, Deserialize)]
@@ -132,37 +133,21 @@ pub fn load_from_reader<T: DeserializeOwned>(json: impl Read) -> crate::Result<T
 pub struct Item {
     tokens: Vec<String>,
     pub name: String,
-    pub platinum: f32,
-    pub ducats: usize,
+    pub platinum: Option<f32>,
+    pub ducats: Option<usize>,
+    pub ignored: bool,
     len: usize,
 }
 
 impl Item {
-    pub fn from_price_item(item: PriceItem) -> Self {
+    pub fn new(name: String, platinum: Option<f32>, ducats: Option<usize>, ignored: bool) -> Self {
         Self {
-            tokens: item
-                .name
-                .split_ascii_whitespace()
-                .map(str::to_owned)
-                .collect(),
-            len: item.name.len(),
-            name: item.name,
-            platinum: item.custom_avg,
-            ducats: 0,
-        }
-    }
-
-    pub fn from_ducat_item(name: String, item: DucatItem) -> Self {
-        Self {
-            tokens:
-                name
-                .split_ascii_whitespace()
-                .map(str::to_owned)
-                .collect(),
+            tokens: name.split_ascii_whitespace().map(str::to_owned).collect(),
             len: name.len(),
             name,
-            platinum: 0.0,
-            ducats: item.ducats,
+            ignored,
+            platinum,
+            ducats,
         }
     }
 }
@@ -184,17 +169,44 @@ impl Items {
             };
         }
 
-        let tokens = price_items
-            .into_iter()
-            .filter(|item| !item.name.ends_with("Set"))
-            .map(Item::from_price_item)
-            .collect::<Vec<_>>();
+        let mut items = vec![];
 
-        let min_len = tokens.iter().map(|item| item.len).min().unwrap_or(0);
-        let max_len = tokens.iter().map(|item| item.len).max().unwrap_or(0);
+        let FilteredItems {
+            eqmt,
+            ignored_items,
+            ..
+        } = filtered_items;
+
+        items.extend(
+            ignored_items
+                .into_iter()
+                .map(|(name, _)| Item::new(name, None, None, true)),
+        );
+
+        let eqmt = eqmt.into_iter().flat_map(|(_, e)| e.parts);
+
+        for (name, item) in eqmt {
+            let platinum = price_items
+                .iter() //
+                .filter(|item| !item.name.ends_with("Set"))
+                .find(|item| {
+                    item.name
+                        // some reason there is a single typo in prices api
+                        // "Kompressa Prime Receiver" turns into "Kompressa Prime Reciever"
+                        .replace("Reciever", "Receiver")
+                        .starts_with(&name)
+                })
+                .map(|item| item.custom_avg);
+
+            let item = Item::new(name, platinum, Some(item.ducats), false);
+            items.push(item);
+        }
+
+        let min_len = items.iter().map(|item| item.len).min().unwrap_or(0);
+        let max_len = items.iter().map(|item| item.len).max().unwrap_or(0);
 
         Self {
-            items: tokens,
+            items,
             min_len,
             max_len,
         }

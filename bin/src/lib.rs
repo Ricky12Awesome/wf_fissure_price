@@ -4,19 +4,19 @@ pub use anyhow;
 pub use ashpd;
 pub use env_logger;
 
-use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
+use std::sync::Arc;
 pub use tokio;
 pub use tokio_stream;
 pub use x11rb;
 
+use crate::geometry::Desktop;
 use image::DynamicImage;
 use lib::ocr;
 use lib::palette::Hsl;
-use lib::theme::{DEFAULT_THEMES, Theme};
-use lib::util::{PIXEL_REWARD_HEIGHT, PIXEL_SINGLE_REWARD_WIDTH};
-use lib::wfinfo::price_data::PriceItem;
-use lib::wfinfo::{Item, Items, load_from_reader};
+use lib::theme::Theme;
+use lib::util::{get_scale, PIXEL_REWARD_HEIGHT, PIXEL_SINGLE_REWARD_WIDTH};
+use lib::wfinfo::{load_from_reader, Item, Items};
 use overlay::femtovg::{Canvas, Color, Paint, Renderer};
 use overlay::{CanvasExt, OverlayAnchor, OverlayConf, OverlayRenderer, State};
 
@@ -26,6 +26,7 @@ pub fn get_items<'a>(image: DynamicImage) -> anyhow::Result<(Vec<Item>, &'a Them
     // https://api.warframestat.us/wfinfo/prices
     let prices = std::fs::File::open("prices.json")?;
     let prices = load_from_reader(prices)?;
+    // https://api.warframestat.us/wfinfo/filtered_items
     let filtered_items = std::fs::File::open("filtered_items.json")?;
     let filtered_items = load_from_reader(filtered_items)?;
 
@@ -63,7 +64,7 @@ pub fn test(image: DynamicImage) -> anyhow::Result<()> {
 
         print!("[ {item_og} ]: ");
         print!("{}", item.name);
-        print!(" [plat: {}]", item.platinum);
+        print!(" [plat: {}]", item.platinum.unwrap_or(0.0));
         println!()
     }
 
@@ -148,33 +149,33 @@ async fn keybind_wayland() -> anyhow::Result<()> {
 }
 
 async fn run(close_handle: Arc<AtomicBool>, running_handle: Arc<AtomicBool>) -> anyhow::Result<()> {
-    // use ashpd::desktop::screenshot::Screenshot;
-    //
-    // let ss = Screenshot::request()
-    //     .interactive(false)
-    //     .modal(false)
-    //     .send()
-    //     .await?;
-    //
-    // let ss = ss.response()?;
-    // let image = image::open(ss.uri().path())?;
-    // let window = Desktop::detect().get_active_window()?;
-    // let [x, y] = window.at;
-    // let [w, h] = window.size;
-    //
-    // let image = image.crop_imm(x, y, w, h);
-    //
-    // let scale = get_scale(&image).unwrap_or(0.5);
-    // let items = get_items(image)?;
+    use ashpd::desktop::screenshot::Screenshot;
+
+    let ss = Screenshot::request()
+        .interactive(false)
+        .modal(false)
+        .send()
+        .await?;
+
+    let ss = ss.response()?;
+    let image = image::open(ss.uri().path())?;
+    let window = Desktop::detect().get_active_window()?;
+    let [x, y] = window.at;
+    let [w, h] = window.size;
+
+    let image = image.crop_imm(x, y, w, h);
+
+    let scale = get_scale(&image).unwrap_or(0.5);
+    let (items, theme) = get_items(image)?;
 
     // println!("{}", serde_json::to_string(&items)?);
 
     // testing
-    let theme = DEFAULT_THEMES.by_name("Vitruvian").unwrap();
-    let items: Vec<PriceItem> = serde_json::from_str(
-        r#"[{"name":"Octavia Prime Systems","yesterday_vol":113,"today_vol":114,"custom_avg":8.1},{"name":"Octavia Prime Blueprint","yesterday_vol":176,"today_vol":189,"custom_avg":20.4},{"name":"Tenora Prime Blueprint","yesterday_vol":7,"today_vol":20,"custom_avg":3.8},{"name":"Harrow Prime Systems","yesterday_vol":97,"today_vol":119,"custom_avg":29.6}]"#,
-    )?;
-    let scale = 1440.0 / 2160.0;
+    // let theme = DEFAULT_THEMES.by_name("Vitruvian").unwrap();
+    // let items: Vec<PriceItem> = serde_json::from_str(
+    //     r#"[{"name":"Octavia Prime Systems","yesterday_vol":113,"today_vol":114,"custom_avg":8.1},{"name":"Octavia Prime Blueprint","yesterday_vol":176,"today_vol":189,"custom_avg":20.4},{"name":"Tenora Prime Blueprint","yesterday_vol":7,"today_vol":20,"custom_avg":3.8},{"name":"Harrow Prime Systems","yesterday_vol":97,"today_vol":119,"custom_avg":29.6}]"#,
+    // )?;
+    // let scale = 1440.0 / 2160.0;
     // let scale = 1080.0 / 2160.0;
     // let scale = 2160.0 / 2160.0;
 
@@ -184,7 +185,7 @@ async fn run(close_handle: Arc<AtomicBool>, running_handle: Arc<AtomicBool>) -> 
 
     let highest = items
         .iter()
-        .max_by_key(|item| item.custom_avg.floor() as u32)
+        .max_by_key(|item| item.platinum.unwrap_or_default().floor() as u32)
         .unwrap();
 
     let overlay = Overlay {
@@ -199,7 +200,7 @@ async fn run(close_handle: Arc<AtomicBool>, running_handle: Arc<AtomicBool>) -> 
 
 struct Overlay<'a> {
     scale: f32,
-    items: Vec<PriceItem>,
+    items: Vec<Item>,
     highest: String,
     theme: &'a Theme,
 }
@@ -255,20 +256,41 @@ impl<T: Renderer> OverlayRenderer<T> for Overlay<'_> {
                 canvas.fill_text(x + offset, fs, &item.name, &primary)?;
             }
 
-            let y = fs * 2.333;
-            let text = "Platinum: ";
-            let offset =
-                canvas.measure_text(y, fs, &format!("{text}{}", item.custom_avg), &secondary)?;
-            let offset = (pixel_single_reward_width - offset.width()) / 2.0;
-            let avg = canvas.draw_text(offset + x, y, text, &primary, None)?;
+            if let Some(platinum) = item.platinum {
+                let y = fs * 2.333;
+                let text = "Platinum: ";
+                let offset =
+                    canvas.measure_text(y, fs, &format!("{text}{}", platinum), &secondary)?;
 
-            canvas.draw_text(
-                offset + avg.width() + x,
-                y, //
-                format!("{}", item.custom_avg),
-                &secondary,
-                None,
-            )?;
+                let offset = (pixel_single_reward_width - offset.width()) / 2.0;
+                let avg = canvas.draw_text(offset + x, y, text, &primary, None)?;
+
+                canvas.draw_text(
+                    offset + avg.width() + x,
+                    y, //
+                    format!("{}", platinum),
+                    &secondary,
+                    None,
+                )?;
+            }
+
+            if let Some(ducats) = item.ducats {
+                let y = fs * 3.5;
+                let text = "Ducats: ";
+                let offset =
+                    canvas.measure_text(y, fs, &format!("{text}{}", ducats), &secondary)?;
+
+                let offset = (pixel_single_reward_width - offset.width()) / 2.0;
+                let avg = canvas.draw_text(offset + x, y, text, &primary, None)?;
+
+                canvas.draw_text(
+                    offset + avg.width() + x,
+                    y, //
+                    format!("{}", ducats),
+                    &secondary,
+                    None,
+                )?;
+            }
 
             if item.name == self.highest {
                 // let y = fs * 5.0;
@@ -311,7 +333,7 @@ fn show_overlay(
         width: ((PIXEL_SINGLE_REWARD_WIDTH * overlay.items.len() as f32) * overlay.scale) as u32,
         height: ((PIXEL_REWARD_HEIGHT / 2.0) * overlay.scale) as u32,
         anchor: OverlayAnchor::Bottom,
-        anchor_offset: (1000.0 * overlay.scale) as u32,
+        anchor_offset: (700.0 * overlay.scale) as u32,
         close_handle,
         running_handle,
         ..OverlayConf::default()
@@ -327,6 +349,15 @@ fn show_overlay(
 
 pub async fn _main() -> anyhow::Result<()> {
     env_logger::init();
+
+    // // https://api.warframestat.us/wfinfo/prices
+    // let prices = std::fs::File::open("prices.json")?;
+    // let prices = load_from_reader(prices)?;
+    // // https://api.warframestat.us/wfinfo/filtered_items
+    // let filtered_items = std::fs::File::open("filtered_items.json")?;
+    // let filtered_items = load_from_reader(filtered_items)?;
+
+    // let items = Items::new(prices, filtered_items);
 
     // let _ = tokio::spawn(async { keybind_x11() });
 
