@@ -2,18 +2,27 @@
 
 use crate::backend::OverlayBackend;
 use crate::{OverlayAnchor, OverlayConf, OverlayRenderer, RunMode, State};
+use egl::EGL_NO_CONTEXT;
 use femtovg::renderer::OpenGl;
 use femtovg::{Canvas, Color};
-use std::sync::atomic::Ordering;
+use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
 use thiserror::Error;
+use wayland_client::backend::WaylandError as WaylandBackendError;
 use wayland_client::globals::{
     BindError, GlobalError, GlobalList, GlobalListContents, registry_queue_init,
 };
 use wayland_client::protocol::wl_compositor::WlCompositor;
+use wayland_client::protocol::wl_keyboard;
+use wayland_client::protocol::wl_keyboard::WlKeyboard;
 use wayland_client::protocol::wl_region::WlRegion;
 use wayland_client::protocol::wl_registry::WlRegistry;
-use wayland_client::{ConnectError, Connection, Dispatch, Proxy, QueueHandle, protocol::wl_surface::WlSurface, DispatchError};
+use wayland_client::protocol::wl_seat::WlSeat;
+use wayland_client::{
+    ConnectError, Connection, Dispatch, DispatchError, Proxy, QueueHandle,
+    protocol::wl_surface::WlSurface,
+};
 use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_layer_surface_v1};
 use zwlr_layer_shell_v1::{Layer, ZwlrLayerShellV1};
 use zwlr_layer_surface_v1::ZwlrLayerSurfaceV1;
@@ -30,9 +39,9 @@ pub enum WaylandError {
     #[error(transparent)]
     DispatchError(#[from] DispatchError),
     #[error(transparent)]
-    WaylandEglError(#[from] wayland_egl::Error),
+    WaylandError(#[from] WaylandBackendError),
     #[error(transparent)]
-    FemtovgError(#[from] femtovg::ErrorKind),
+    WaylandEglError(#[from] wayland_egl::Error),
     #[error("EGL display not found")]
     EglDisplayNotFound,
     #[error("EGL config not found")]
@@ -52,24 +61,39 @@ impl WaylandOverlayBackend {
         &mut self,
         conf: OverlayConf,
         mut overlay: impl OverlayRenderer<OpenGl>,
-    ) -> Result<(), WaylandError> {
+    ) -> Result<(), crate::Error> {
         let total_width = conf.width;
         let total_height = conf.height + conf.anchor_offset;
 
+        conf.close_handle.store(false, Ordering::SeqCst);
+        conf.running_handle.store(true, Ordering::SeqCst);
+
         // Wayland Impl
-        let conn = Connection::connect_to_env()?;
+        let conn = Connection::connect_to_env().map_err(WaylandError::from)?;
         let backend = conn.backend();
 
-        let (globals, mut event_queue) = registry_queue_init::<WlState>(&conn)?;
+        let (globals, mut event_queue) =
+            registry_queue_init::<WlState>(&conn).map_err(WaylandError::from)?;
+
         let qh = event_queue.handle();
 
-        let layer_shell: ZwlrLayerShellV1 = globals.bind(&qh, 1..=4, ())?;
-        let compositor = globals.bind::<WlCompositor, _, _>(&qh, 1..=4, ())?;
+        let layer_shell: ZwlrLayerShellV1 =
+            globals.bind(&qh, 1..=4, ()).map_err(WaylandError::from)?;
 
-        let surface = compositor.create_surface(&qh, ());
+        let compositor = globals
+            .bind::<WlCompositor, _, _>(&qh, 1..=4, ())
+            .map_err(WaylandError::from)?;
+
+        let seat = globals
+            .bind::<WlSeat, _, _>(&qh, 1..=3, ())
+            .map_err(WaylandError::from)?;
+
+        let _kb = seat.get_keyboard(&qh, ());
+
+        let wl_surface = compositor.create_surface(&qh, ());
 
         let layer_surface = layer_shell.get_layer_surface(
-            &surface,
+            &wl_surface,
             None,
             Layer::Overlay,
             "overlay".into(),
@@ -78,8 +102,9 @@ impl WaylandOverlayBackend {
         );
 
         layer_surface.set_size(total_width, total_height);
-        layer_surface.set_keyboard_interactivity(KeyboardInteractivity::None);
+        layer_surface.set_keyboard_interactivity(KeyboardInteractivity::OnDemand);
         // layer_surface.set_anchor(Anchor::Bottom);
+
         match conf.anchor {
             OverlayAnchor::Top => {
                 layer_surface.set_anchor(Anchor::Top);
@@ -88,20 +113,22 @@ impl WaylandOverlayBackend {
                 layer_surface.set_anchor(Anchor::Bottom);
             }
         }
+
         // layer_surface.set_anchor(Anchor::Bottom | Anchor::Top | Anchor::Left | Anchor::Right);
 
-        let region = compositor.create_region(&qh, ());
-        surface.set_input_region(Some(&region));
+        // let region = compositor.create_region(&qh, ());
+        // wl_surface.set_input_region(Some(&region));
 
-        surface.commit();
+        wl_surface.commit();
 
         // Wayland EGL Impl
 
-        let surface =
-            wayland_egl::WlEglSurface::new(surface.id(), total_width as _, total_height as _)?;
+        let wl_egl_surface =
+            wayland_egl::WlEglSurface::new(wl_surface.id(), total_width as _, total_height as _)
+                .map_err(WaylandError::from)?;
 
         let egl_native_display_type = backend.display_ptr() as _;
-        let egl_native_window_type = surface.ptr() as _;
+        let egl_native_window_type = wl_egl_surface.ptr() as _;
 
         let egl_display = egl::get_display(egl_native_display_type)
             .ok_or_else(|| WaylandError::EglDisplayNotFound)?;
@@ -150,7 +177,6 @@ impl WaylandOverlayBackend {
         let mut overlay_state = State {
             width: conf.width as f32,
             height: conf.height as f32,
-            scale: 1.0,
             time,
             delta: Duration::from_secs(0),
         };
@@ -170,12 +196,18 @@ impl WaylandOverlayBackend {
 
         let mut previous = overlay_state.time.elapsed();
 
-        overlay.setup(&mut canvas, &overlay_state);
+        overlay.setup(&mut canvas, &overlay_state)?;
+
+        let mut state = WlState {
+            close_token: conf.close_handle.clone(),
+        };
 
         loop {
-            event_queue.dispatch_pending(&mut WlState)?;
+            event_queue
+                .dispatch_pending(&mut state)
+                .map_err(WaylandError::from)?;
 
-            if conf.close_token.load(Ordering::SeqCst) {
+            if conf.close_handle.load(Ordering::SeqCst) {
                 break;
             }
 
@@ -189,7 +221,7 @@ impl WaylandOverlayBackend {
                 Color::rgba(0, 0, 0, 0),
             );
 
-            overlay.draw(&mut canvas, &overlay_state);
+            overlay.draw(&mut canvas, &overlay_state)?;
 
             canvas.flush();
 
@@ -201,6 +233,38 @@ impl WaylandOverlayBackend {
                 break;
             }
         }
+
+        // Handle remaining events if RunMode::Once
+        if conf.mode == RunMode::Once {
+            loop {
+                event_queue
+                    .dispatch_pending(&mut state)
+                    .map_err(WaylandError::from)?;
+
+                if conf.close_handle.load(Ordering::SeqCst) {
+                    break;
+                }
+            }
+        }
+
+        // Drop any loose-ends
+        drop(canvas);
+        egl::make_current(
+            egl_display,
+            egl::EGL_NO_SURFACE,
+            egl::EGL_NO_SURFACE,
+            EGL_NO_CONTEXT,
+        );
+        egl::destroy_context(egl_display, egl_context);
+        egl::destroy_surface(egl_display, egl_surface);
+
+        layer_surface.destroy();
+        drop(wl_egl_surface);
+        wl_surface.destroy();
+        conn.flush().map_err(WaylandError::from)?;
+
+        conf.close_handle.store(false, Ordering::SeqCst);
+        conf.running_handle.store(false, Ordering::SeqCst);
 
         Ok(())
     }
@@ -215,14 +279,50 @@ impl OverlayBackend for WaylandOverlayBackend {
         overlay: impl OverlayRenderer<Self::Renderer>,
     ) -> Result<(), crate::Error> {
         self.run_impl(conf, overlay)
-            .map_err(crate::Error::WaylandError)
     }
 }
 
 /* ---------------- STATE + DISPATCH IMPLEMENTATIONS ---------------- */
 
 #[allow(dead_code)]
-struct WlState;
+struct WlState {
+    close_token: Arc<AtomicBool>,
+}
+
+impl Dispatch<WlKeyboard, (), WlState> for WlState {
+    fn event(
+        state: &mut WlState,
+        _proxy: &WlKeyboard,
+        event: <WlKeyboard as Proxy>::Event,
+        _data: &(),
+        _conn: &Connection,
+        _qh: &QueueHandle<WlState>,
+    ) {
+        match event {
+            wl_keyboard::Event::Keymap { .. } => {}
+            wl_keyboard::Event::Enter { .. } => {}
+            wl_keyboard::Event::Leave { .. } => {}
+            wl_keyboard::Event::Key { .. } => {
+                state.close_token.store(true, Ordering::SeqCst);
+            }
+            wl_keyboard::Event::Modifiers { .. } => {}
+            wl_keyboard::Event::RepeatInfo { .. } => {}
+            _ => {}
+        }
+    }
+}
+
+impl Dispatch<WlSeat, (), WlState> for WlState {
+    fn event(
+        _state: &mut WlState,
+        _proxy: &WlSeat,
+        _event: <WlSeat as Proxy>::Event,
+        _data: &(),
+        _conn: &Connection,
+        _qh: &QueueHandle<WlState>,
+    ) {
+    }
+}
 
 impl Dispatch<WlRegion, (), WlState> for WlState {
     fn event(
@@ -245,8 +345,6 @@ impl Dispatch<WlRegistry, GlobalListContents> for WlState {
         _conn: &Connection,
         _qh: &QueueHandle<Self>,
     ) {
-        // we don't need to handle registry events manually here;
-        // registry_queue_init already filled the globals list for us.
     }
 }
 
@@ -265,22 +363,15 @@ impl Dispatch<ZwlrLayerShellV1, ()> for WlState {
 impl Dispatch<ZwlrLayerSurfaceV1, ()> for WlState {
     fn event(
         _state: &mut Self,
-        _proxy: &ZwlrLayerSurfaceV1,
+        proxy: &ZwlrLayerSurfaceV1,
         event: <ZwlrLayerSurfaceV1 as Proxy>::Event,
         _udata: &(),
         _conn: &Connection,
         _qh: &QueueHandle<Self>,
     ) {
         match event {
-            zwlr_layer_surface_v1::Event::Configure {
-                serial,
-                width,
-                height,
-            } => {
-                _proxy.ack_configure(serial);
-
-                // Redraw happens here (but we don’t draw anything yet)
-                println!("Configured: {}x{}", width, height);
+            zwlr_layer_surface_v1::Event::Configure { serial, .. } => {
+                proxy.ack_configure(serial);
             }
             _ => {}
         }
@@ -305,19 +396,11 @@ impl Dispatch<WlSurface, ()> for WlState {
     fn event(
         _state: &mut Self,
         _proxy: &WlSurface,
-        event: <WlSurface as Proxy>::Event,
+        _event: <WlSurface as Proxy>::Event,
         _udata: &(),
         _conn: &Connection,
         _qh: &QueueHandle<Self>,
     ) {
-        // Need to implement these even if unused
-        match event {
-            wayland_client::protocol::wl_surface::Event::Enter { .. } => {}
-            wayland_client::protocol::wl_surface::Event::Leave { .. } => {}
-            wayland_client::protocol::wl_surface::Event::PreferredBufferScale { .. } => {}
-            wayland_client::protocol::wl_surface::Event::PreferredBufferTransform { .. } => {}
-            _ => {}
-        }
     }
 }
 

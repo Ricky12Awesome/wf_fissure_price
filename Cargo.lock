@@ -366,6 +366,7 @@ dependencies = [
  "env_logger",
  "image",
  "lib",
+ "overlay",
  "serde",
  "serde_json",
  "tokio",

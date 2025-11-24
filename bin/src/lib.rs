@@ -1,9 +1,11 @@
+use overlay::backend::OverlayBackend;
 mod geometry;
-
 pub use anyhow;
 pub use ashpd;
 pub use env_logger;
-use std::time::Instant;
+
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 pub use tokio;
 pub use tokio_stream;
 pub use x11rb;
@@ -11,9 +13,34 @@ pub use x11rb;
 use crate::geometry::Desktop;
 use image::DynamicImage;
 use lib::ocr;
-use lib::wfinfo::{Items, load_price_data_from_reader};
+use lib::util::{get_scale, PIXEL_REWARD_HEIGHT, PIXEL_SINGLE_REWARD_WIDTH};
+use lib::wfinfo::price_data::PriceItem;
+use lib::wfinfo::{load_price_data_from_reader, Items};
+use overlay::femtovg::{Canvas, Color, Paint, Renderer};
+use overlay::{OverlayAnchor, OverlayConf, OverlayRenderer, State};
 
-pub fn run(image: DynamicImage) -> anyhow::Result<()> {
+pub fn get_items(image: DynamicImage) -> anyhow::Result<Option<Vec<PriceItem>>> {
+    let text = ocr::reward_image_to_reward_names(image, None, None)?;
+
+    // https://api.warframestat.us/wfinfo/prices
+    let file = std::fs::File::open("prices.json")?;
+    let data = load_price_data_from_reader(file)?;
+
+    let items = Items::new(data);
+
+    let mut result = vec![];
+    for item_og in text {
+        let Some(item) = items.find_item(&item_og) else {
+            return Ok(None);
+        };
+
+        result.push(item);
+    }
+
+    Ok(Some(result))
+}
+
+pub fn test(image: DynamicImage) -> anyhow::Result<()> {
     let text = ocr::reward_image_to_reward_names(image, None, None)?;
 
     // https://api.warframestat.us/wfinfo/prices
@@ -94,36 +121,130 @@ async fn keybind() -> anyhow::Result<()> {
 
     let mut activated = portal.receive_activated().await?;
 
+    let close_handle = Arc::new(AtomicBool::new(false));
+    let running_handle = Arc::new(AtomicBool::new(false));
+
     while let Some(_) = activated.next().await {
-        use ashpd::desktop::screenshot::Screenshot;
+        let close_handle = close_handle.clone();
+        let running_handle = running_handle.clone();
 
-        let ss = Screenshot::request()
-            .interactive(false)
-            .modal(false)
-            .send()
-            .await?;
+        let _ = tokio::spawn(async move {
+            if running_handle.load(Ordering::SeqCst) {
+                close_handle.store(true, Ordering::SeqCst);
 
-        let ss = ss.response()?;
-        let timer = Instant::now();
-        let image = image::open(ss.uri().path())?;
-        println!("Opening took: {:?}", timer.elapsed());
+                while running_handle.load(Ordering::SeqCst) {
+                    tokio::time::sleep(std::time::Duration::from_millis(10)).await;
+                }
+            }
 
-        let window = Desktop::detect().get_active_window()?;
-        let [x, y] = window.at;
-        let [w, h] = window.size;
+            let result = run(close_handle, running_handle).await;
 
-        // let timer = Instant::now();
-        let image = image.crop_imm(x, y, w, h);
-        // let image = image.resize(image.width() / 8, image.height() / 8, FilterType::Nearest);
-        // image.save("ss.png")?;
-        // println!("Saving: {:?}", timer.elapsed());
-
-        let result = run(image);
-
-        if let Err(e) = result {
-            eprintln!("{e}");
-        }
+            if let Err(err) = result {
+                println!("{err}");
+            }
+        });
     }
+
+    Ok(())
+}
+
+async fn run(close_handle: Arc<AtomicBool>, running_handle: Arc<AtomicBool>) -> anyhow::Result<()> {
+    use ashpd::desktop::screenshot::Screenshot;
+
+    let ss = Screenshot::request()
+        .interactive(false)
+        .modal(false)
+        .send()
+        .await?;
+
+    let ss = ss.response()?;
+    let image = image::open(ss.uri().path())?;
+    let window = Desktop::detect().get_active_window()?;
+    let [x, y] = window.at;
+    let [w, h] = window.size;
+
+    let image = image.crop_imm(x, y, w, h);
+
+    let scale = get_scale(&image).unwrap_or(0.5);
+    let items = get_items(image)?.unwrap_or_default();
+    let overlay = Overlay { scale, items };
+
+    show_overlay(overlay, close_handle, running_handle)
+}
+
+struct Overlay {
+    scale: f32,
+    items: Vec<PriceItem>,
+}
+
+impl<T: Renderer> OverlayRenderer<T> for Overlay {
+    fn draw(&mut self, canvas: &mut Canvas<T>, state: &State) -> Result<(), overlay::Error> {
+        let item_paint = Paint::color(Color::hsl(0.0, 0.0, 0.9))
+            .with_line_width(16.0 * self.scale)
+            .with_font_size(36.0 * self.scale);
+
+        let plat_paint = item_paint
+            .clone() //
+            .with_color(Color::hsl(0.5, 0.2, 0.9));
+
+        canvas.clear_rect(
+            0,
+            0,
+            state.width as u32,
+            state.height as u32,
+            Color::rgba(0, 0, 0, 128),
+        );
+
+        for (i, item) in self.items.iter().enumerate() {
+            let i = i as f32;
+            let x = (PIXEL_SINGLE_REWARD_WIDTH * self.scale) * i;
+            let y = item_paint.font_size() * 2.0 * self.scale;
+
+            canvas.fill_text(x, y, &item.name, &item_paint)?;
+            canvas.fill_text(
+                x,
+                y * 2.,
+                format!("Plat avg: {:.2}", item.custom_avg),
+                &plat_paint,
+            )?;
+            canvas.fill_text(
+                x,
+                y * 3.,
+                format!("Plat today: {:.2}", item.today_vol),
+                &plat_paint,
+            )?;
+            canvas.fill_text(
+                x,
+                y * 4.,
+                format!("Plat yesterday: {:.2}", item.yesterday_vol),
+                &plat_paint,
+            )?;
+        }
+
+        Ok(())
+    }
+}
+
+fn show_overlay(
+    overlay: Overlay,
+    close_handle: Arc<AtomicBool>,
+    running_handle: Arc<AtomicBool>,
+) -> anyhow::Result<()> {
+    // let scale = get_scale(image).ok_or_else(|| anyhow::anyhow!("Failed to get scale"))?;
+    let conf = OverlayConf {
+        width: ((PIXEL_SINGLE_REWARD_WIDTH * overlay.items.len() as f32) * overlay.scale) as u32,
+        height: ((PIXEL_REWARD_HEIGHT / 2.0) * overlay.scale) as u32,
+        anchor: OverlayAnchor::Bottom,
+        anchor_offset: 650,
+        close_handle,
+        running_handle,
+        ..OverlayConf::default()
+    };
+
+    let mut backend = overlay::backend::get_backend(overlay::backend::Backend::Wayland)
+        .ok_or_else(|| anyhow::anyhow!("Backend not found"))?;
+
+    backend.run(conf, overlay)?;
 
     Ok(())
 }

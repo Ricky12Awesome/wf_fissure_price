@@ -5,6 +5,7 @@ edition = "2024"
 
 [dependencies]
 lib = { path = "../lib" }
+overlay = { path = "../overlay" }
 
 image = { workspace = true }
 serde = { workspace = true }

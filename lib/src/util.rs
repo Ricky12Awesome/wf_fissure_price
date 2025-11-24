@@ -5,6 +5,7 @@ use image::{DynamicImage, Rgb};
 
 // pub const PIXEL_REWARD_WIDTH: f32 = 960.0;
 pub const PIXEL_REWARD_WIDTH: f32 = 1920.0;
+pub const PIXEL_SINGLE_REWARD_WIDTH: f32 = PIXEL_REWARD_WIDTH / 4.0;
 // pub const PIXEL_REWARD_HEIGHT: f32 = 240.0;
 pub const PIXEL_REWARD_HEIGHT: f32 = 480.0;
 // pub const PIXEL_REWARD_Y: f32 = 220.0;
