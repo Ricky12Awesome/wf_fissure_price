@@ -7,8 +7,9 @@ use std::io::Read;
 pub mod price_data {
     use super::*;
     use palette::num::MinMax;
+    use serde::Serialize;
 
-    #[derive(Clone, Debug, Deserialize)]
+    #[derive(Clone, Debug, Serialize, Deserialize)]
     pub struct PriceItem {
         pub name: String,
         #[serde(deserialize_with = "serde_aux::prelude::deserialize_number_from_string")]

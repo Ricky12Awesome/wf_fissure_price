@@ -3,6 +3,7 @@ use std::env;
 use std::process::Command;
 
 #[derive(Debug, Clone, Deserialize)]
+#[allow(dead_code)]
 pub struct Window {
     pub at: [u32; 2],
     pub size: [u32; 2],

@@ -16,6 +16,25 @@ levenshtein = "1.0.5"
 serde_json = "1.0.145"
 serde-aux = "4.7.0"
 
+# Bin Deps
+tokio = { version = "1.48.0", features = ["full"] }
+tokio-stream = { version = "0.1.17", features = ["full"] }
+env_logger = "0.11.8"
+anyhow = "1.0.100"
+x11rb = "0.13.2"
+
+femtovg = "0.19.3"
+egl = "0.2.7"
+
+# Wayland Deps
+ashpd = { version = "0.12.0", features = ["wayland"] }
+wayland-protocols-wlr = { version = "0.3.9", features = ["client"] }
+wayland-client = "0.31"
+wayland-egl = "0.32.8"
+
+# X11 Deps
+xcap = "0.7.1"
+
 [dev-dependencies]
 lib = { path = "lib" }
 colored = "3.0.0"

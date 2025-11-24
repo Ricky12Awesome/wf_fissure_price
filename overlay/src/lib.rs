@@ -1,6 +1,6 @@
 pub mod backend;
 
-use femtovg::{Canvas, Renderer};
+use femtovg::{Canvas, Color, Paint, Renderer};
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::time::{Duration, Instant};
@@ -57,4 +57,38 @@ pub struct OverlayConf {
     pub height: u32,
     pub close_handle: Arc<AtomicBool>,
     pub running_handle: Arc<AtomicBool>,
+}
+
+pub trait CanvasExt {
+    fn draw_text(
+        &mut self,
+        x: f32,
+        y: f32,
+        text: impl AsRef<str>,
+        fill_paint: Option<&Paint>,
+        stroke_paint: Option<&Paint>,
+    ) -> Result<(), femtovg::ErrorKind>;
+}
+
+impl<T: Renderer> CanvasExt for Canvas<T> {
+    fn draw_text(
+        &mut self,
+        x: f32,
+        y: f32,
+        text: impl AsRef<str>,
+        fill_paint: Option<&Paint>,
+        stroke_paint: Option<&Paint>,
+    ) -> Result<(), femtovg::ErrorKind> {
+        let text = text.as_ref();
+
+        if let Some(fill_paint) = fill_paint {
+            self.fill_text(x, y, text, fill_paint)?;
+        }
+
+        if let Some(stroke_paint) = stroke_paint {
+            self.fill_text(x, y, text, stroke_paint)?;
+        }
+
+        Ok(())
+    }
 }

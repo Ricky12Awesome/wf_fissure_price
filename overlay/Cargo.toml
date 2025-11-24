@@ -4,14 +4,14 @@ version = "0.1.0"
 edition = "2024"
 
 [dependencies]
-femtovg = "0.19.3"
-egl = "0.2.7"
+femtovg = { workspace = true }
+egl = { workspace = true }
 thiserror = { workspace = true }
 
 # Wayland Deps
-wayland-client = { version = "0.31", optional = true }
-wayland-protocols-wlr = { version = "0.3.9", optional = true, features = ["client"] }
-wayland-egl = { version = "0.32.8", optional = true }
+wayland-client = { workspace = true, optional = true }
+wayland-protocols-wlr = { workspace = true, optional = true, features = ["client"] }
+wayland-egl = { workspace = true, optional = true }
 
 [features]
 default = ["wayland", "x11"]
