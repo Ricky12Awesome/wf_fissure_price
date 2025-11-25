@@ -1,13 +1,18 @@
 use femtovg::{Canvas, Color, Paint, Renderer};
 use overlay::backend::OverlayBackend;
 use overlay::backend::{Backend, get_backend};
-use overlay::{OverlayAnchor, OverlayConf, OverlayRenderer, RunMode, State};
+use overlay::{Error, OverlayAnchor, OverlayConf, OverlayMargin, OverlayRenderer, State};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 struct Overlay;
 
 impl<T: Renderer> OverlayRenderer<T> for Overlay {
+    fn setup(&mut self, canvas: &mut Canvas<T>, _: &State) -> Result<(), Error> {
+        canvas.add_font("/usr/share/fonts/TTF/DejaVuSans.ttf")?;
+        Ok(())
+    }
+
     fn draw(&mut self, canvas: &mut Canvas<T>, state: &State) -> Result<(), overlay::Error> {
         let time = state.time.elapsed().as_millis();
 
@@ -38,9 +43,8 @@ fn main() -> Result<(), overlay::Error> {
     let running_handle = Arc::new(AtomicBool::new(false));
 
     let conf = OverlayConf {
-        mode: RunMode::Loop,
-        anchor: OverlayAnchor::Bottom,
-        anchor_offset: 400,
+        anchor: OverlayAnchor::TopRight,
+        margin: OverlayMargin::new_right(100).top(200),
         width: 1200,
         height: 200,
         close_handle: close_handle.clone(),
@@ -48,7 +52,7 @@ fn main() -> Result<(), overlay::Error> {
     };
 
     std::thread::spawn(move || {
-        std::thread::sleep(std::time::Duration::from_secs(2));
+        std::thread::sleep(std::time::Duration::from_secs(10));
         close_handle.store(true, Ordering::SeqCst);
     });
 

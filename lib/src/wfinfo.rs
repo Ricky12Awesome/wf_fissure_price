@@ -136,18 +136,24 @@ pub struct Item {
     pub platinum: Option<f32>,
     pub ducats: Option<usize>,
     pub ignored: bool,
-    len: usize,
+    pub vaulted: bool,
 }
 
 impl Item {
-    pub fn new(name: String, platinum: Option<f32>, ducats: Option<usize>, ignored: bool) -> Self {
+    pub fn new(
+        name: String,
+        platinum: Option<f32>,
+        ducats: Option<usize>,
+        ignored: bool,
+        vaulted: bool,
+    ) -> Self {
         Self {
             tokens: name.split_ascii_whitespace().map(str::to_owned).collect(),
-            len: name.len(),
             name,
-            ignored,
             platinum,
             ducats,
+            ignored,
+            vaulted,
         }
     }
 }
@@ -180,12 +186,14 @@ impl Items {
         items.extend(
             ignored_items
                 .into_iter()
-                .map(|(name, _)| Item::new(name, None, None, true)),
+                .map(|(name, _)| Item::new(name, None, None, true, false)),
         );
 
-        let eqmt = eqmt.into_iter().flat_map(|(_, e)| e.parts);
+        let eqmt = eqmt
+            .into_iter()
+            .flat_map(|(_, e)| e.parts.into_iter().map(move |item| (e.vaulted, item)));
 
-        for (name, item) in eqmt {
+        for (vaulted, (name, item)) in eqmt {
             let platinum = price_items
                 .iter() //
                 .filter(|item| !item.name.ends_with("Set"))
@@ -198,12 +206,12 @@ impl Items {
                 })
                 .map(|item| item.custom_avg);
 
-            let item = Item::new(name, platinum, Some(item.ducats), false);
+            let item = Item::new(name, platinum, Some(item.ducats), false, vaulted);
             items.push(item);
         }
 
-        let min_len = items.iter().map(|item| item.len).min().unwrap_or(0);
-        let max_len = items.iter().map(|item| item.len).max().unwrap_or(0);
+        let min_len = items.iter().map(|item| item.name.len()).min().unwrap_or(0);
+        let max_len = items.iter().map(|item| item.name.len()).max().unwrap_or(0);
 
         Self {
             items,

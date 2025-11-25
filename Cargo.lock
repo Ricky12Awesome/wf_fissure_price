@@ -420,7 +420,9 @@ dependencies = [
 name = "cli"
 version = "0.1.0"
 dependencies = [
+ "anyhow",
  "bin",
+ "tokio",
 ]
 
 [[package]]
@@ -1534,6 +1536,7 @@ version = "0.1.0"
 dependencies = [
  "egl",
  "femtovg",
+ "log",
  "thiserror 2.0.17",
  "wayland-client",
  "wayland-egl",

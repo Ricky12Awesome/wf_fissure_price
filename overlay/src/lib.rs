@@ -26,13 +26,6 @@ pub trait OverlayRenderer<T: Renderer> {
     fn draw(&mut self, canvas: &mut Canvas<T>, state: &State) -> Result<(), Error>;
 }
 
-#[derive(Default, Debug, Clone, Eq, PartialEq)]
-pub enum RunMode {
-    #[default]
-    Loop,
-    Once,
-}
-
 #[derive(Debug, Clone)]
 pub struct State {
     pub width: f32,
@@ -41,22 +34,126 @@ pub struct State {
     pub delta: Duration,
 }
 
-#[derive(Default, Debug, Clone)]
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum OverlayAnchor {
     #[default]
-    Top,
-    Bottom,
+    TopLeft,
+    TopCenter,
+    TopRight,
+    CenterLeft,
+    Center,
+    CenterRight,
+    BottomLeft,
+    BottomCenter,
+    BottomRight,
+}
+
+impl OverlayAnchor {
+    pub fn is_top(&self) -> bool {
+        matches!(self, Self::TopLeft | Self::TopCenter | Self::TopRight)
+    }
+
+    pub fn is_center(&self) -> bool {
+        matches!(self, Self::CenterLeft | Self::Center | Self::CenterRight)
+    }
+
+    pub fn is_bottom(&self) -> bool {
+        matches!(
+            self,
+            Self::BottomLeft | Self::BottomCenter | Self::BottomRight
+        )
+    }
 }
 
 #[derive(Default, Debug, Clone)]
 pub struct OverlayConf {
-    pub mode: RunMode,
     pub anchor: OverlayAnchor,
-    pub anchor_offset: u32,
+    pub margin: OverlayMargin,
     pub width: u32,
     pub height: u32,
     pub close_handle: Arc<AtomicBool>,
     pub running_handle: Arc<AtomicBool>,
+}
+
+#[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct OverlayMargin {
+    pub top: i32,
+    pub right: i32,
+    pub bottom: i32,
+    pub left: i32,
+}
+
+impl OverlayMargin {
+    pub const ZERO: Self = Self::new(0, 0, 0, 0);
+
+    pub const fn new(top: i32, right: i32, bottom: i32, left: i32) -> Self {
+        Self {
+            top,
+            right,
+            bottom,
+            left,
+        }
+    }
+
+    pub const fn new_top(top: i32) -> Self {
+        Self { top, ..Self::ZERO }
+    }
+
+    pub const fn new_right(right: i32) -> Self {
+        Self {
+            right,
+            ..Self::ZERO
+        }
+    }
+    pub const fn new_bottom(bottom: i32) -> Self {
+        Self {
+            bottom,
+            ..Self::ZERO
+        }
+    }
+    pub const fn new_left(left: i32) -> Self {
+        Self { left, ..Self::ZERO }
+    }
+
+    pub const fn top(self, top: i32) -> Self {
+        Self { top, ..self }
+    }
+
+    pub const fn right(self, right: i32) -> Self {
+        Self { right, ..self }
+    }
+
+    pub const fn bottom(self, bottom: i32) -> Self {
+        Self { bottom, ..self }
+    }
+
+    pub const fn left(self, left: i32) -> Self {
+        Self { left, ..self }
+    }
+}
+
+impl Into<(i32, i32, i32, i32)> for OverlayMargin {
+    fn into(self) -> (i32, i32, i32, i32) {
+        (self.top, self.right, self.bottom, self.left)
+    }
+}
+
+impl Into<[i32; 4]> for OverlayMargin {
+    fn into(self) -> [i32; 4] {
+        [self.top, self.right, self.bottom, self.left]
+    }
+}
+
+impl From<(i32, i32, i32, i32)> for OverlayMargin {
+    fn from((top, right, bottom, left): (i32, i32, i32, i32)) -> Self {
+        Self::new(top, right, bottom, left)
+    }
+}
+
+impl From<[i32; 4]> for OverlayMargin {
+    fn from([top, right, bottom, left]: [i32; 4]) -> Self {
+        Self::new(top, right, bottom, left)
+    }
 }
 
 pub trait CanvasExt {

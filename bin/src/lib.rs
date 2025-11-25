@@ -1,24 +1,20 @@
 use overlay::backend::OverlayBackend;
 mod geometry;
-pub use anyhow;
-pub use ashpd;
-pub use env_logger;
 
-use std::sync::atomic::AtomicBool;
 use std::sync::Arc;
-pub use tokio;
-pub use tokio_stream;
-pub use x11rb;
+use std::sync::atomic::AtomicBool;
 
 use crate::geometry::Desktop;
 use image::DynamicImage;
 use lib::ocr;
 use lib::palette::Hsl;
 use lib::theme::Theme;
-use lib::util::{get_scale, PIXEL_REWARD_HEIGHT, PIXEL_SINGLE_REWARD_WIDTH};
-use lib::wfinfo::{load_from_reader, Item, Items};
+use lib::util::{PIXEL_REWARD_HEIGHT, PIXEL_SINGLE_REWARD_WIDTH, get_scale};
+use lib::wfinfo::{Item, Items, load_from_reader};
 use overlay::femtovg::{Canvas, Color, Paint, Renderer};
-use overlay::{CanvasExt, OverlayAnchor, OverlayConf, OverlayRenderer, State};
+use overlay::{
+    CanvasExt, Error, OverlayAnchor, OverlayConf, OverlayMargin, OverlayRenderer, State,
+};
 
 pub fn get_items<'a>(image: DynamicImage) -> anyhow::Result<(Vec<Item>, &'a Theme)> {
     let (text, theme) = ocr::reward_image_to_reward_names(image, None, None)?;
@@ -218,6 +214,11 @@ fn color_from_hsl(hsl: Hsl) -> Color {
 }
 
 impl<T: Renderer> OverlayRenderer<T> for Overlay<'_> {
+    fn setup(&mut self, canvas: &mut Canvas<T>, _: &State) -> Result<(), Error> {
+        canvas.add_font("/usr/share/fonts/TTF/DejaVuSans.ttf")?;
+        Ok(())
+    }
+
     fn draw(&mut self, canvas: &mut Canvas<T>, state: &State) -> Result<(), overlay::Error> {
         let pixel_single_reward_width = PIXEL_SINGLE_REWARD_WIDTH * self.scale;
 
@@ -243,6 +244,8 @@ impl<T: Renderer> OverlayRenderer<T> for Overlay<'_> {
         line.rect(0.0, fs * 1.2, state.width, 1. * self.scale);
         canvas.fill_path(&line, &secondary);
 
+        // let offset_factor = 1.1666666666666667;
+        let offset_factor = 1.2;
         for (i, item) in self.items.iter().enumerate() {
             let i = i as f32;
             let x = pixel_single_reward_width * i;
@@ -257,10 +260,11 @@ impl<T: Renderer> OverlayRenderer<T> for Overlay<'_> {
             }
 
             if let Some(platinum) = item.platinum {
-                let y = fs * 2.333;
+                let y = fs * (offset_factor * 2.0);
                 let text = "Platinum: ";
-                let offset =
-                    canvas.measure_text(y, fs, &format!("{text}{}", platinum), &secondary)?;
+                let value = platinum.floor() as u32;
+                let value = format!("{value}");
+                let offset = canvas.measure_text(y, fs, &format!("{text}{value}"), &secondary)?;
 
                 let offset = (pixel_single_reward_width - offset.width()) / 2.0;
                 let avg = canvas.draw_text(offset + x, y, text, &primary, None)?;
@@ -268,14 +272,14 @@ impl<T: Renderer> OverlayRenderer<T> for Overlay<'_> {
                 canvas.draw_text(
                     offset + avg.width() + x,
                     y, //
-                    format!("{}", platinum),
+                    &value,
                     &secondary,
                     None,
                 )?;
             }
 
             if let Some(ducats) = item.ducats {
-                let y = fs * 3.5;
+                let y = fs * (offset_factor * 3.0);
                 let text = "Ducats: ";
                 let offset =
                     canvas.measure_text(y, fs, &format!("{text}{}", ducats), &secondary)?;
@@ -291,6 +295,41 @@ impl<T: Renderer> OverlayRenderer<T> for Overlay<'_> {
                     None,
                 )?;
             }
+
+            if let (Some(platinum), Some(ducats)) = (item.platinum, item.ducats) {
+                let y = fs * (offset_factor * 4.0);
+                let text = "Ducats/Platinum: ";
+                let value = ducats as f32 / platinum;
+                let value = format!("{:.2}", value);
+                let offset = canvas.measure_text(y, fs, &format!("{text}{value}"), &secondary)?;
+
+                let offset = (pixel_single_reward_width - offset.width()) / 2.0;
+                let avg = canvas.draw_text(offset + x, y, text, &primary, None)?;
+
+                canvas.draw_text(
+                    offset + avg.width() + x,
+                    y, //
+                    &value,
+                    &secondary,
+                    None,
+                )?;
+            }
+
+            let y = fs * (offset_factor * 5.0);
+            let text = "Vaulted: ";
+            let value = format!("{}", item.vaulted);
+            let offset = canvas.measure_text(y, fs, &format!("{text}{value}"), &secondary)?;
+
+            let offset = (pixel_single_reward_width - offset.width()) / 2.0;
+            let avg = canvas.draw_text(offset + x, y, text, &primary, None)?;
+
+            canvas.draw_text(
+                offset + avg.width() + x,
+                y, //
+                &value,
+                &secondary,
+                None,
+            )?;
 
             if item.name == self.highest {
                 // let y = fs * 5.0;
@@ -332,8 +371,8 @@ fn show_overlay(
     let conf = OverlayConf {
         width: ((PIXEL_SINGLE_REWARD_WIDTH * overlay.items.len() as f32) * overlay.scale) as u32,
         height: ((PIXEL_REWARD_HEIGHT / 2.0) * overlay.scale) as u32,
-        anchor: OverlayAnchor::Bottom,
-        anchor_offset: (700.0 * overlay.scale) as u32,
+        anchor: OverlayAnchor::BottomCenter,
+        margin: OverlayMargin::new_bottom((700.0 * overlay.scale) as i32),
         close_handle,
         running_handle,
         ..OverlayConf::default()

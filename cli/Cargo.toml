@@ -5,3 +5,6 @@ edition = "2024"
 
 [dependencies]
 bin = { path = "../bin" }
+
+tokio = { workspace = true }
+anyhow = { workspace = true }

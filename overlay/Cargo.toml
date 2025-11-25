@@ -7,6 +7,7 @@ edition = "2024"
 femtovg = { workspace = true }
 egl = { workspace = true }
 thiserror = { workspace = true }
+log = { workspace = true }
 
 # Wayland Deps
 wayland-client = { workspace = true, optional = true }

@@ -1,8 +1,7 @@
 #![cfg(feature = "wayland")]
 
 use crate::backend::OverlayBackend;
-use crate::{OverlayAnchor, OverlayConf, OverlayRenderer, RunMode, State};
-use egl::EGL_NO_CONTEXT;
+use crate::{OverlayAnchor, OverlayConf, OverlayRenderer, State};
 use femtovg::renderer::OpenGl;
 use femtovg::{Canvas, Color};
 use std::sync::Arc;
@@ -55,6 +54,22 @@ pub enum WaylandError {
 #[allow(dead_code)]
 pub struct WaylandOverlayBackend;
 
+impl Into<Anchor> for OverlayAnchor {
+    fn into(self) -> Anchor {
+        match self {
+            Self::TopLeft => Anchor::Top | Anchor::Left,
+            Self::TopCenter => Anchor::Top,
+            Self::TopRight => Anchor::Top | Anchor::Right,
+            Self::CenterLeft => Anchor::Top | Anchor::Bottom | Anchor::Left,
+            Self::Center => Anchor::Top | Anchor::Bottom,
+            Self::CenterRight => Anchor::Top | Anchor::Bottom | Anchor::Right,
+            Self::BottomLeft => Anchor::Bottom | Anchor::Left,
+            Self::BottomCenter => Anchor::Bottom,
+            Self::BottomRight => Anchor::Bottom | Anchor::Right,
+        }
+    }
+}
+
 impl WaylandOverlayBackend {
     #[allow(dead_code)]
     fn run_impl(
@@ -62,8 +77,12 @@ impl WaylandOverlayBackend {
         conf: OverlayConf,
         mut overlay: impl OverlayRenderer<OpenGl>,
     ) -> Result<(), crate::Error> {
+        log::debug!("Starting Wayland overlay");
+
+        // let total_width = conf.width + conf.anchor_offset_x;
+        // let total_height = conf.height + conf.anchor_offset_y;
         let total_width = conf.width;
-        let total_height = conf.height + conf.anchor_offset;
+        let total_height = conf.height;
 
         conf.close_handle.store(false, Ordering::SeqCst);
         conf.running_handle.store(true, Ordering::SeqCst);
@@ -74,11 +93,7 @@ impl WaylandOverlayBackend {
 
         let (globals, mut event_queue) =
             registry_queue_init::<WlState>(&conn).map_err(WaylandError::from)?;
-
         let qh = event_queue.handle();
-
-        let layer_shell: ZwlrLayerShellV1 =
-            globals.bind(&qh, 1..=4, ()).map_err(WaylandError::from)?;
 
         let compositor = globals
             .bind::<WlCompositor, _, _>(&qh, 1..=4, ())
@@ -89,6 +104,9 @@ impl WaylandOverlayBackend {
             .map_err(WaylandError::from)?;
 
         let _kb = seat.get_keyboard(&qh, ());
+
+        let layer_shell: ZwlrLayerShellV1 =
+            globals.bind(&qh, 1..=4, ()).map_err(WaylandError::from)?;
 
         let wl_surface = compositor.create_surface(&qh, ());
 
@@ -102,17 +120,15 @@ impl WaylandOverlayBackend {
         );
 
         layer_surface.set_size(total_width, total_height);
+        layer_surface.set_exclusive_zone(-1);
         layer_surface.set_keyboard_interactivity(KeyboardInteractivity::OnDemand);
         // layer_surface.set_anchor(Anchor::Bottom);
 
-        match conf.anchor {
-            OverlayAnchor::Top => {
-                layer_surface.set_anchor(Anchor::Top);
-            }
-            OverlayAnchor::Bottom => {
-                layer_surface.set_anchor(Anchor::Bottom);
-            }
-        }
+        let (top, right, bottom, left) = conf.margin.into();
+
+        layer_surface.set_margin(top, right, bottom, left);
+
+        layer_surface.set_anchor(conf.anchor.into());
 
         // layer_surface.set_anchor(Anchor::Bottom | Anchor::Top | Anchor::Left | Anchor::Right);
 
@@ -183,17 +199,6 @@ impl WaylandOverlayBackend {
 
         canvas.set_size(total_width, total_height, 1.0);
 
-        match conf.anchor {
-            OverlayAnchor::Top => {
-                canvas.translate(0.0, conf.anchor_offset as f32);
-            }
-            OverlayAnchor::Bottom => {
-                canvas.translate(0.0, 0.0);
-            }
-        }
-
-        canvas.add_font("/usr/share/fonts/TTF/DejaVuSans.ttf")?;
-
         let mut previous = overlay_state.time.elapsed();
 
         overlay.setup(&mut canvas, &overlay_state)?;
@@ -208,6 +213,7 @@ impl WaylandOverlayBackend {
                 .map_err(WaylandError::from)?;
 
             if conf.close_handle.load(Ordering::SeqCst) {
+                log::debug!("closing overlay");
                 break;
             }
 
@@ -228,24 +234,9 @@ impl WaylandOverlayBackend {
             previous = overlay_state.time.elapsed();
 
             egl::swap_buffers(egl_display, egl_surface);
-
-            if conf.mode == RunMode::Once {
-                break;
-            }
         }
 
-        // Handle remaining events if RunMode::Once
-        if conf.mode == RunMode::Once {
-            loop {
-                event_queue
-                    .dispatch_pending(&mut state)
-                    .map_err(WaylandError::from)?;
-
-                if conf.close_handle.load(Ordering::SeqCst) {
-                    break;
-                }
-            }
-        }
+        log::debug!("cleaning up");
 
         // Drop any loose-ends
         drop(canvas);
@@ -253,7 +244,7 @@ impl WaylandOverlayBackend {
             egl_display,
             egl::EGL_NO_SURFACE,
             egl::EGL_NO_SURFACE,
-            EGL_NO_CONTEXT,
+            egl::EGL_NO_CONTEXT,
         );
         egl::destroy_context(egl_display, egl_context);
         egl::destroy_surface(egl_display, egl_surface);
