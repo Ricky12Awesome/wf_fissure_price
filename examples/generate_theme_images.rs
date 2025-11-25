@@ -1,5 +1,4 @@
-use lib::image;
-use lib::image::imageops::FilterType;
+use image::imageops::FilterType;
 
 // Offsets are based on a 1440p screenshot
 const X_OFFSET: f32 = 250.0;

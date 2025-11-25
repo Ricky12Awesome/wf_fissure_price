@@ -7,14 +7,15 @@ use std::sync::atomic::AtomicBool;
 use crate::geometry::Desktop;
 use image::DynamicImage;
 use lib::ocr;
-use lib::palette::Hsl;
 use lib::theme::Theme;
 use lib::util::{PIXEL_REWARD_HEIGHT, PIXEL_SINGLE_REWARD_WIDTH, get_scale};
 use lib::wfinfo::{Item, Items, load_from_reader};
+use log::debug;
 use overlay::femtovg::{Canvas, Color, Paint, Renderer};
 use overlay::{
-    CanvasExt, Error, OverlayAnchor, OverlayConf, OverlayMargin, OverlayRenderer, State,
+    CanvasExt, Error, OverlayAnchor, OverlayConf, OverlayInfo, OverlayMargin, OverlayRenderer,
 };
+use palette::Hsl;
 
 pub fn get_items<'a>(image: DynamicImage) -> anyhow::Result<(Vec<Item>, &'a Theme)> {
     let (text, theme) = ocr::reward_image_to_reward_names(image, None, None)?;
@@ -97,15 +98,13 @@ fn keybind_x11() -> anyhow::Result<()> {
     }
 }
 
-async fn keybind_wayland() -> anyhow::Result<()> {
+pub async fn wayland_keybind(callback: impl AsyncFn() -> anyhow::Result<()>) -> anyhow::Result<()> {
     use ashpd::desktop::global_shortcuts::{GlobalShortcuts, NewShortcut};
     use tokio_stream::StreamExt;
 
     let portal = GlobalShortcuts::new().await?;
-
     let session = portal.create_session().await?;
 
-    // Define new shortcut(s)
     let shortcut = NewShortcut::new(
         "wf_fissure_price_activate",
         "Activates this program to screenshot warframe and show overlay",
@@ -117,7 +116,7 @@ async fn keybind_wayland() -> anyhow::Result<()> {
     let response = request.response()?;
 
     for sc in response.shortcuts() {
-        println!(
+        debug!(
             "Shortcut bound: id = {}, description = {}, trigger_description = {:?}",
             sc.id(),
             sc.description(),
@@ -127,24 +126,14 @@ async fn keybind_wayland() -> anyhow::Result<()> {
 
     let mut activated = portal.receive_activated().await?;
 
-    let close_handle = Arc::new(AtomicBool::new(false));
-    let running_handle = Arc::new(AtomicBool::new(false));
-
     while let Some(_) = activated.next().await {
-        let close_handle = close_handle.clone();
-        let running_handle = running_handle.clone();
-
-        let result = run(close_handle, running_handle).await;
-
-        if let Err(err) = result {
-            println!("{err}");
-        }
+        callback().await?;
     }
 
     Ok(())
 }
 
-async fn run(close_handle: Arc<AtomicBool>, running_handle: Arc<AtomicBool>) -> anyhow::Result<()> {
+pub async fn activate(close_handle: Arc<AtomicBool>) -> anyhow::Result<()> {
     use ashpd::desktop::screenshot::Screenshot;
 
     let ss = Screenshot::request()
@@ -155,9 +144,8 @@ async fn run(close_handle: Arc<AtomicBool>, running_handle: Arc<AtomicBool>) -> 
 
     let ss = ss.response()?;
     let image = image::open(ss.uri().path())?;
-    let window = Desktop::detect().get_active_window()?;
-    let [x, y] = window.at;
-    let [w, h] = window.size;
+    let geometry = Desktop::detect().get_active_window_geometry()?;
+    let [x, y, w, h] = geometry.into();
 
     let image = image.crop_imm(x, y, w, h);
 
@@ -191,7 +179,7 @@ async fn run(close_handle: Arc<AtomicBool>, running_handle: Arc<AtomicBool>) -> 
         theme,
     };
 
-    show_overlay(overlay, close_handle, running_handle)
+    show_overlay(overlay, close_handle)
 }
 
 struct Overlay<'a> {
@@ -214,12 +202,12 @@ fn color_from_hsl(hsl: Hsl) -> Color {
 }
 
 impl<T: Renderer> OverlayRenderer<T> for Overlay<'_> {
-    fn setup(&mut self, canvas: &mut Canvas<T>, _: &State) -> Result<(), Error> {
+    fn setup(&mut self, canvas: &mut Canvas<T>, _: &OverlayInfo) -> Result<(), Error> {
         canvas.add_font("/usr/share/fonts/TTF/DejaVuSans.ttf")?;
         Ok(())
     }
 
-    fn draw(&mut self, canvas: &mut Canvas<T>, state: &State) -> Result<(), overlay::Error> {
+    fn draw(&mut self, canvas: &mut Canvas<T>, info: &OverlayInfo) -> Result<(), overlay::Error> {
         let pixel_single_reward_width = PIXEL_SINGLE_REWARD_WIDTH * self.scale;
 
         let primary = Paint::color(color_from_hsl(self.theme.primary))
@@ -235,13 +223,13 @@ impl<T: Renderer> OverlayRenderer<T> for Overlay<'_> {
         canvas.clear_rect(
             0,
             0,
-            state.width as u32,
-            state.height as u32,
+            canvas.width(),
+            canvas.height(),
             Color::rgba(0, 0, 0, 128),
         );
 
         let mut line = overlay::femtovg::Path::new();
-        line.rect(0.0, fs * 1.2, state.width, 1. * self.scale);
+        line.rect(0.0, fs * 1.2, info.width, 1. * self.scale);
         canvas.fill_path(&line, &secondary);
 
         // let offset_factor = 1.1666666666666667;
@@ -331,20 +319,6 @@ impl<T: Renderer> OverlayRenderer<T> for Overlay<'_> {
                 None,
             )?;
 
-            if item.name == self.highest {
-                // let y = fs * 5.0;
-                // let highest_pri = primary.clone().with_font_size(fs * 2.5);
-                // let highest_sec = secondary
-                //     .clone()
-                //     .with_font_size(highest_pri.font_size())
-                //     .with_line_width(3.0 * self.scale);
-                //
-                // let offset = canvas.measure_text(y, fs, "Highest!", &highest_pri)?;
-                // let offset = (pixel_single_reward_width - offset.width()) / 2.0;
-                //
-                // canvas.draw_text(offset + x, y, "Highest", &highest_sec, Some(&highest_pri))?;
-            }
-
             if i as usize == self.items.len() - 1 {
                 continue;
             }
@@ -354,7 +328,7 @@ impl<T: Renderer> OverlayRenderer<T> for Overlay<'_> {
                 pixel_single_reward_width + (pixel_single_reward_width * i),
                 0.0,
                 1. * self.scale,
-                state.height,
+                info.height,
             );
             canvas.fill_path(&line, &secondary);
         }
@@ -366,7 +340,6 @@ impl<T: Renderer> OverlayRenderer<T> for Overlay<'_> {
 fn show_overlay(
     overlay: Overlay,
     close_handle: Arc<AtomicBool>,
-    running_handle: Arc<AtomicBool>,
 ) -> anyhow::Result<()> {
     let conf = OverlayConf {
         width: ((PIXEL_SINGLE_REWARD_WIDTH * overlay.items.len() as f32) * overlay.scale) as u32,
@@ -374,7 +347,6 @@ fn show_overlay(
         anchor: OverlayAnchor::BottomCenter,
         margin: OverlayMargin::new_bottom((700.0 * overlay.scale) as i32),
         close_handle,
-        running_handle,
         ..OverlayConf::default()
     };
 
@@ -387,8 +359,6 @@ fn show_overlay(
 }
 
 pub async fn _main() -> anyhow::Result<()> {
-    env_logger::init();
-
     // // https://api.warframestat.us/wfinfo/prices
     // let prices = std::fs::File::open("prices.json")?;
     // let prices = load_from_reader(prices)?;
@@ -400,7 +370,6 @@ pub async fn _main() -> anyhow::Result<()> {
 
     // let _ = tokio::spawn(async { keybind_x11() });
 
-    keybind_wayland().await?;
 
     Ok(())
 }

@@ -1,6 +1,4 @@
 use std::collections::HashMap;
-use lib::image;
-use lib::serde_json;
 
 fn main() -> anyhow::Result<()> {
     // let scale = get_scale()

@@ -1,17 +1,52 @@
+#![allow(unused)]
+
 use serde::Deserialize;
 use std::env;
 use std::process::Command;
 
-#[derive(Debug, Clone, Deserialize)]
-#[allow(dead_code)]
-pub struct Window {
+#[derive(Debug, Clone, Copy, Deserialize)]
+pub struct HyprWindow {
     pub at: [u32; 2],
     pub size: [u32; 2],
-    pub title: String,
-    pub class: String,
 }
 
-pub fn hyprland_impl() -> anyhow::Result<Window> {
+#[derive(Debug, Clone, Copy, Deserialize)]
+pub struct Geometry {
+    pub x: u32,
+    pub y: u32,
+    pub width: u32,
+    pub height: u32,
+}
+
+impl Into<(u32, u32, u32, u32)> for Geometry {
+    fn into(self) -> (u32, u32, u32, u32) {
+        (self.x, self.y, self.width, self.height)
+    }
+}
+
+impl Into<[u32; 4]> for Geometry {
+    fn into(self) -> [u32; 4] {
+        [self.x, self.y, self.width, self.height]
+    }
+}
+
+impl From<HyprWindow> for Geometry {
+    fn from(
+        HyprWindow {
+            at: [x, y],
+            size: [width, height],
+        }: HyprWindow,
+    ) -> Self {
+        Self {
+            x,
+            y,
+            width,
+            height,
+        }
+    }
+}
+
+pub fn hyprland_impl() -> anyhow::Result<HyprWindow> {
     let cmd = Command::new("hyprctl")
         .args(["activewindow", "-j"])
         .output()?;
@@ -21,13 +56,44 @@ pub fn hyprland_impl() -> anyhow::Result<Window> {
     Ok(output)
 }
 
-#[derive(Debug, Copy, Clone)]
+pub fn custom_impl(cmd: String) -> anyhow::Result<Geometry> {
+    let words = shell_words::split(cmd.as_str())?;
+    let cmd = &words[0];
+    let args = &words[1..];
+
+    let cmd = Command::new(cmd).args(args).output()?;
+    let stdout = String::from_utf8(cmd.stdout)?;
+    let segments = stdout
+        .trim()
+        .split(",")
+        .map(str::trim)
+        .map(|segment| segment.parse::<u32>())
+        .collect::<Result<Vec<_>, _>>()?;
+
+    if segments.len() != 4 {
+        return Err(anyhow::anyhow!(
+            "wrong number of segments, must be: x, y, width, height"
+        ));
+    }
+
+    Ok(Geometry {
+        x: segments[0],
+        y: segments[1],
+        width: segments[2],
+        height: segments[3],
+    })
+}
+
+#[derive(Debug, Clone)]
 pub enum Desktop {
     Hyprland,
     Sway,
     Kde,
     Gnome,
     Unknown,
+    CustomStatic(Geometry),
+    /// command must output 4 comma seperated numbers like: `x, y, width, height`
+    CustomCmd(String),
 }
 
 impl Desktop {
@@ -47,14 +113,15 @@ impl Desktop {
         }
     }
 
-    pub fn get_active_window(self) -> anyhow::Result<Window> {
+    pub fn get_active_window_geometry(self) -> anyhow::Result<Geometry> {
         match self {
-            Desktop::Hyprland => hyprland_impl(),
-            Desktop::Sway => Err(anyhow::anyhow!("Currently Unsupported")),
-            Desktop::Kde => Err(anyhow::anyhow!("Currently Unsupported")),
-            Desktop::Gnome => Err(anyhow::anyhow!("Currently Unsupported")),
-            Desktop::Unknown => Err(anyhow::anyhow!("Currently Unsupported")),
+            Self::Hyprland => hyprland_impl().map(Into::into),
+            Self::Sway => Err(anyhow::anyhow!("Currently Unsupported")),
+            Self::Kde => Err(anyhow::anyhow!("Currently Unsupported")),
+            Self::Gnome => Err(anyhow::anyhow!("Currently Unsupported")),
+            Self::Unknown => Err(anyhow::anyhow!("Unknown desktop, try custom")),
+            Self::CustomStatic(w) => Ok(w),
+            Self::CustomCmd(cmd) => custom_impl(cmd),
         }
     }
 }
-

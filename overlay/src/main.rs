@@ -1,30 +1,30 @@
 use femtovg::{Canvas, Color, Paint, Renderer};
 use overlay::backend::OverlayBackend;
 use overlay::backend::{Backend, get_backend};
-use overlay::{Error, OverlayAnchor, OverlayConf, OverlayMargin, OverlayRenderer, State};
+use overlay::{Error, OverlayAnchor, OverlayConf, OverlayMargin, OverlayRenderer, OverlayInfo};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 struct Overlay;
 
 impl<T: Renderer> OverlayRenderer<T> for Overlay {
-    fn setup(&mut self, canvas: &mut Canvas<T>, _: &State) -> Result<(), Error> {
+    fn setup(&mut self, canvas: &mut Canvas<T>, _: &OverlayInfo) -> Result<(), Error> {
         canvas.add_font("/usr/share/fonts/TTF/DejaVuSans.ttf")?;
         Ok(())
     }
 
-    fn draw(&mut self, canvas: &mut Canvas<T>, state: &State) -> Result<(), overlay::Error> {
-        let time = state.time.elapsed().as_millis();
+    fn draw(&mut self, canvas: &mut Canvas<T>, info: &OverlayInfo) -> Result<(), overlay::Error> {
+        let time = info.time.elapsed().as_millis();
 
         let hue = ((time / 60) % 360) as f32 / 360.0;
         let color = Color::hsl(hue, 0.85, 0.85);
 
         let mut rect = femtovg::Path::new();
-        rect.rect(0.0, 0.0, state.width, state.height);
+        rect.rect(0.0, 0.0, info.width, info.height);
         canvas.stroke_path(&rect, &Paint::color(color).with_line_width(10.0));
 
         let mut circle = femtovg::Path::new();
-        circle.circle(state.width / 2., state.height / 2., state.height / 2.);
+        circle.circle(info.width / 2., info.height / 2., info.height / 2.);
         canvas.fill_path(&circle, &Paint::color(color));
 
         canvas.fill_text(
@@ -40,7 +40,6 @@ impl<T: Renderer> OverlayRenderer<T> for Overlay {
 
 fn main() -> Result<(), overlay::Error> {
     let close_handle = Arc::new(AtomicBool::new(false));
-    let running_handle = Arc::new(AtomicBool::new(false));
 
     let conf = OverlayConf {
         anchor: OverlayAnchor::TopRight,
@@ -48,7 +47,6 @@ fn main() -> Result<(), overlay::Error> {
         width: 1200,
         height: 200,
         close_handle: close_handle.clone(),
-        running_handle: running_handle.clone(),
     };
 
     std::thread::spawn(move || {

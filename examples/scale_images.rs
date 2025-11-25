@@ -1,7 +1,6 @@
 use std::fs::DirEntry;
-use lib::image;
-use lib::image::imageops::FilterType;
-use lib::rayon::prelude::*;
+use image::imageops::FilterType;
+use rayon::prelude::*;
 
 fn scale(theme: DirEntry) -> anyhow::Result<()> {
     let name = theme.path();

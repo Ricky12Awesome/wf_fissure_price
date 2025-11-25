@@ -19,15 +19,15 @@ pub enum Error {
 
 pub trait OverlayRenderer<T: Renderer> {
     #[allow(unused_variables)]
-    fn setup(&mut self, canvas: &mut Canvas<T>, state: &State) -> Result<(), Error> {
+    fn setup(&mut self, canvas: &mut Canvas<T>, info: &OverlayInfo) -> Result<(), Error> {
         Ok(())
     }
 
-    fn draw(&mut self, canvas: &mut Canvas<T>, state: &State) -> Result<(), Error>;
+    fn draw(&mut self, canvas: &mut Canvas<T>, info: &OverlayInfo) -> Result<(), Error>;
 }
 
 #[derive(Debug, Clone)]
-pub struct State {
+pub struct OverlayInfo {
     pub width: f32,
     pub height: f32,
     pub time: Instant,
@@ -72,7 +72,6 @@ pub struct OverlayConf {
     pub width: u32,
     pub height: u32,
     pub close_handle: Arc<AtomicBool>,
-    pub running_handle: Arc<AtomicBool>,
 }
 
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]

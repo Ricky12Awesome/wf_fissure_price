@@ -10,12 +10,13 @@ I want this project to work more like
 [WFinfo](https://github.com/WFCD/WFinfo)
 (mainly just the overlay stuff)
 
-Pricing data is from [WFM Api](https://42bytes.notion.site/WFM-Api-v2-Documentation-5d987e4aa2f74b55a80db1a09932459d)
+## Project Status
+Currently, this project only works on Wayland
 
+### Pricing Data
+- https://api.warframestat.us/wfinfo/prices (Platinum)
+- https://api.warframestat.us/wfinfo/filtered_items (Ducats)
 
-
-
-## For Developers
 
 ### Project Structure
 
@@ -23,3 +24,4 @@ Pricing data is from [WFM Api](https://42bytes.notion.site/WFM-Api-v2-Documentat
 * `./bin` is shared code between binaries
 * `./cli` is code for cli binary
 * `./gui` is code for gui binary (not yet implement)
+* `./overlay` is code for overlay stuff, this will probably be in its own crate for anyone to use

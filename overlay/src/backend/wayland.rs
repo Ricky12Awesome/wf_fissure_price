@@ -1,7 +1,7 @@
 #![cfg(feature = "wayland")]
 
 use crate::backend::OverlayBackend;
-use crate::{OverlayAnchor, OverlayConf, OverlayRenderer, State};
+use crate::{OverlayAnchor, OverlayConf, OverlayRenderer, OverlayInfo};
 use femtovg::renderer::OpenGl;
 use femtovg::{Canvas, Color};
 use std::sync::Arc;
@@ -79,13 +79,7 @@ impl WaylandOverlayBackend {
     ) -> Result<(), crate::Error> {
         log::debug!("Starting Wayland overlay");
 
-        // let total_width = conf.width + conf.anchor_offset_x;
-        // let total_height = conf.height + conf.anchor_offset_y;
-        let total_width = conf.width;
-        let total_height = conf.height;
-
         conf.close_handle.store(false, Ordering::SeqCst);
-        conf.running_handle.store(true, Ordering::SeqCst);
 
         // Wayland Impl
         let conn = Connection::connect_to_env().map_err(WaylandError::from)?;
@@ -119,16 +113,14 @@ impl WaylandOverlayBackend {
             (),
         );
 
-        layer_surface.set_size(total_width, total_height);
+        layer_surface.set_size(conf.width, conf.height);
         layer_surface.set_exclusive_zone(-1);
         layer_surface.set_keyboard_interactivity(KeyboardInteractivity::OnDemand);
-        // layer_surface.set_anchor(Anchor::Bottom);
 
         let (top, right, bottom, left) = conf.margin.into();
 
-        layer_surface.set_margin(top, right, bottom, left);
-
         layer_surface.set_anchor(conf.anchor.into());
+        layer_surface.set_margin(top, right, bottom, left);
 
         // layer_surface.set_anchor(Anchor::Bottom | Anchor::Top | Anchor::Left | Anchor::Right);
 
@@ -140,7 +132,7 @@ impl WaylandOverlayBackend {
         // Wayland EGL Impl
 
         let wl_egl_surface =
-            wayland_egl::WlEglSurface::new(wl_surface.id(), total_width as _, total_height as _)
+            wayland_egl::WlEglSurface::new(wl_surface.id(), conf.width as _, conf.height as _)
                 .map_err(WaylandError::from)?;
 
         let egl_native_display_type = backend.display_ptr() as _;
@@ -190,14 +182,14 @@ impl WaylandOverlayBackend {
 
         let time = Instant::now();
 
-        let mut overlay_state = State {
+        let mut overlay_state = OverlayInfo {
             width: conf.width as f32,
             height: conf.height as f32,
             time,
             delta: Duration::from_secs(0),
         };
 
-        canvas.set_size(total_width, total_height, 1.0);
+        canvas.set_size(conf.width, conf.height, 1.0);
 
         let mut previous = overlay_state.time.elapsed();
 
@@ -255,7 +247,6 @@ impl WaylandOverlayBackend {
         conn.flush().map_err(WaylandError::from)?;
 
         conf.close_handle.store(false, Ordering::SeqCst);
-        conf.running_handle.store(false, Ordering::SeqCst);
 
         Ok(())
     }
