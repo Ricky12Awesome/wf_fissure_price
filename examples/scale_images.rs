@@ -1,4 +1,5 @@
 use std::fs::DirEntry;
+
 use image::imageops::FilterType;
 use rayon::prelude::*;
 

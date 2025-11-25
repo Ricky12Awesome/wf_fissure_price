@@ -1,16 +1,17 @@
-use crate::util::{
-    FILTER_BACKGROUND, FILTER_FOREGROUND, PIXEL_REWARD_LINE_HEIGHT, PIXEL_REWARD_WIDTH,
-};
-use image::{DynamicImage, GenericImageView, Pixel, Rgb, RgbImage};
-use log::debug;
-use palette::{FromColor, Hsl, IntoColor, Srgb};
-use rayon::iter::IntoParallelIterator;
-use rayon::iter::ParallelIterator;
-use serde::Deserialize;
 use std::collections::HashMap;
 use std::f32::consts::PI;
 use std::ops::{Deref, DerefMut};
 use std::str::FromStr;
+
+use image::{DynamicImage, GenericImageView, Pixel, Rgb, RgbImage};
+use log::debug;
+use palette::{FromColor, Hsl, IntoColor, Srgb};
+use rayon::iter::{IntoParallelIterator, ParallelIterator};
+use serde::Deserialize;
+
+use crate::util::{
+    FILTER_BACKGROUND, FILTER_FOREGROUND, PIXEL_REWARD_LINE_HEIGHT, PIXEL_REWARD_WIDTH
+};
 
 fn deserialize_hex_str<'de, D: serde::de::Deserializer<'de>>(
     deserializer: D,

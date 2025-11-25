@@ -1,9 +1,9 @@
-use femtovg::{Canvas, Color, Paint, Renderer};
-use overlay::backend::OverlayBackend;
-use overlay::backend::{Backend, get_backend};
-use overlay::{Error, OverlayAnchor, OverlayConf, OverlayMargin, OverlayRenderer, OverlayInfo};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
+
+use femtovg::{Canvas, Color, Paint, Renderer};
+use overlay::backend::{Backend, OverlayBackend, get_backend};
+use overlay::{Error, OverlayAnchor, OverlayConf, OverlayInfo, OverlayMargin, OverlayRenderer};
 
 struct Overlay;
 

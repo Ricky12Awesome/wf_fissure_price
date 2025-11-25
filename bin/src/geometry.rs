@@ -1,8 +1,9 @@
 #![allow(unused)]
 
-use serde::Deserialize;
 use std::env;
 use std::process::Command;
+
+use serde::Deserialize;
 
 #[derive(Debug, Clone, Copy, Deserialize)]
 pub struct HyprWindow {
@@ -18,15 +19,15 @@ pub struct Geometry {
     pub height: u32,
 }
 
-impl Into<(u32, u32, u32, u32)> for Geometry {
-    fn into(self) -> (u32, u32, u32, u32) {
-        (self.x, self.y, self.width, self.height)
+impl From<Geometry> for (u32, u32, u32, u32) {
+    fn from(geometry: Geometry) -> (u32, u32, u32, u32) {
+        (geometry.x, geometry.y, geometry.width, geometry.height)
     }
 }
 
-impl Into<[u32; 4]> for Geometry {
-    fn into(self) -> [u32; 4] {
-        [self.x, self.y, self.width, self.height]
+impl From<Geometry> for [u32; 4] {
+    fn from(geometry: Geometry) -> [u32; 4] {
+        [geometry.x, geometry.y, geometry.width, geometry.height]
     }
 }
 

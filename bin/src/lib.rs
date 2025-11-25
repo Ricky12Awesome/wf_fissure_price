@@ -1,21 +1,20 @@
-use overlay::backend::OverlayBackend;
-mod geometry;
+pub mod geometry;
+pub mod overlay;
 
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 
-use crate::geometry::Desktop;
 use image::DynamicImage;
 use lib::ocr;
 use lib::theme::Theme;
 use lib::util::{PIXEL_REWARD_HEIGHT, PIXEL_SINGLE_REWARD_WIDTH, get_scale};
 use lib::wfinfo::{Item, Items, load_from_reader};
 use log::debug;
-use overlay::femtovg::{Canvas, Color, Paint, Renderer};
-use overlay::{
-    CanvasExt, Error, OverlayAnchor, OverlayConf, OverlayInfo, OverlayMargin, OverlayRenderer,
-};
-use palette::Hsl;
+use overlay::backend::{Backend, OverlayBackend, get_backend};
+use overlay::{OverlayAnchor, OverlayConf, OverlayMargin};
+
+use crate::geometry::Desktop;
+use crate::overlay::Overlay;
 
 pub fn get_items<'a>(image: DynamicImage) -> anyhow::Result<(Vec<Item>, &'a Theme)> {
     let (text, theme) = ocr::reward_image_to_reward_names(image, None, None)?;
@@ -126,14 +125,14 @@ pub async fn wayland_keybind(callback: impl AsyncFn() -> anyhow::Result<()>) -> 
 
     let mut activated = portal.receive_activated().await?;
 
-    while let Some(_) = activated.next().await {
+    while activated.next().await.is_some() {
         callback().await?;
     }
 
     Ok(())
 }
 
-pub async fn activate(close_handle: Arc<AtomicBool>) -> anyhow::Result<()> {
+pub async fn activate(settings: ShowOverlaySettings) -> anyhow::Result<()> {
     use ashpd::desktop::screenshot::Screenshot;
 
     let ss = Screenshot::request()
@@ -179,197 +178,49 @@ pub async fn activate(close_handle: Arc<AtomicBool>) -> anyhow::Result<()> {
         theme,
     };
 
-    show_overlay(overlay, close_handle)
+    show_overlay(overlay, settings)
 }
 
-struct Overlay<'a> {
-    scale: f32,
-    items: Vec<Item>,
-    highest: String,
-    theme: &'a Theme,
+#[derive(Debug, Clone)]
+pub struct ShowOverlaySettings {
+    pub anchor: OverlayAnchor,
+    pub margin: OverlayMargin,
+    pub scale_margin: bool,
+    pub close_handle: Arc<AtomicBool>,
+    pub backend: Backend,
 }
 
-fn color_from_hsl(hsl: Hsl) -> Color {
-    let Hsl {
-        hue,
-        saturation,
-        lightness,
-        ..
-    } = hsl;
-    let hue = hue.into_positive_degrees() / 360.0;
-
-    Color::hsl(hue, saturation, lightness)
-}
-
-impl<T: Renderer> OverlayRenderer<T> for Overlay<'_> {
-    fn setup(&mut self, canvas: &mut Canvas<T>, _: &OverlayInfo) -> Result<(), Error> {
-        canvas.add_font("/usr/share/fonts/TTF/DejaVuSans.ttf")?;
-        Ok(())
-    }
-
-    fn draw(&mut self, canvas: &mut Canvas<T>, info: &OverlayInfo) -> Result<(), overlay::Error> {
-        let pixel_single_reward_width = PIXEL_SINGLE_REWARD_WIDTH * self.scale;
-
-        let primary = Paint::color(color_from_hsl(self.theme.primary))
-            .with_line_width(1.0 * self.scale)
-            .with_font_size(38.0 * self.scale);
-
-        let secondary = primary
-            .clone() //
-            .with_color(color_from_hsl(self.theme.secondary));
-
-        let fs = primary.font_size();
-
-        canvas.clear_rect(
-            0,
-            0,
-            canvas.width(),
-            canvas.height(),
-            Color::rgba(0, 0, 0, 128),
-        );
-
-        let mut line = overlay::femtovg::Path::new();
-        line.rect(0.0, fs * 1.2, info.width, 1. * self.scale);
-        canvas.fill_path(&line, &secondary);
-
-        // let offset_factor = 1.1666666666666667;
-        let offset_factor = 1.2;
-        for (i, item) in self.items.iter().enumerate() {
-            let i = i as f32;
-            let x = pixel_single_reward_width * i;
-
-            let offset = canvas.measure_text(x, fs, &item.name, &primary)?;
-            let offset = (pixel_single_reward_width - offset.width()) / 2.0;
-
-            if self.highest == item.name {
-                canvas.fill_text(x + offset, fs, &item.name, &secondary)?;
-            } else {
-                canvas.fill_text(x + offset, fs, &item.name, &primary)?;
-            }
-
-            if let Some(platinum) = item.platinum {
-                let y = fs * (offset_factor * 2.0);
-                let text = "Platinum: ";
-                let value = platinum.floor() as u32;
-                let value = format!("{value}");
-                let offset = canvas.measure_text(y, fs, &format!("{text}{value}"), &secondary)?;
-
-                let offset = (pixel_single_reward_width - offset.width()) / 2.0;
-                let avg = canvas.draw_text(offset + x, y, text, &primary, None)?;
-
-                canvas.draw_text(
-                    offset + avg.width() + x,
-                    y, //
-                    &value,
-                    &secondary,
-                    None,
-                )?;
-            }
-
-            if let Some(ducats) = item.ducats {
-                let y = fs * (offset_factor * 3.0);
-                let text = "Ducats: ";
-                let offset =
-                    canvas.measure_text(y, fs, &format!("{text}{}", ducats), &secondary)?;
-
-                let offset = (pixel_single_reward_width - offset.width()) / 2.0;
-                let avg = canvas.draw_text(offset + x, y, text, &primary, None)?;
-
-                canvas.draw_text(
-                    offset + avg.width() + x,
-                    y, //
-                    format!("{}", ducats),
-                    &secondary,
-                    None,
-                )?;
-            }
-
-            if let (Some(platinum), Some(ducats)) = (item.platinum, item.ducats) {
-                let y = fs * (offset_factor * 4.0);
-                let text = "Ducats/Platinum: ";
-                let value = ducats as f32 / platinum;
-                let value = format!("{:.2}", value);
-                let offset = canvas.measure_text(y, fs, &format!("{text}{value}"), &secondary)?;
-
-                let offset = (pixel_single_reward_width - offset.width()) / 2.0;
-                let avg = canvas.draw_text(offset + x, y, text, &primary, None)?;
-
-                canvas.draw_text(
-                    offset + avg.width() + x,
-                    y, //
-                    &value,
-                    &secondary,
-                    None,
-                )?;
-            }
-
-            let y = fs * (offset_factor * 5.0);
-            let text = "Vaulted: ";
-            let value = format!("{}", item.vaulted);
-            let offset = canvas.measure_text(y, fs, &format!("{text}{value}"), &secondary)?;
-
-            let offset = (pixel_single_reward_width - offset.width()) / 2.0;
-            let avg = canvas.draw_text(offset + x, y, text, &primary, None)?;
-
-            canvas.draw_text(
-                offset + avg.width() + x,
-                y, //
-                &value,
-                &secondary,
-                None,
-            )?;
-
-            if i as usize == self.items.len() - 1 {
-                continue;
-            }
-
-            let mut line = overlay::femtovg::Path::new();
-            line.rect(
-                pixel_single_reward_width + (pixel_single_reward_width * i),
-                0.0,
-                1. * self.scale,
-                info.height,
-            );
-            canvas.fill_path(&line, &secondary);
+impl Default for ShowOverlaySettings {
+    fn default() -> Self {
+        Self {
+            anchor: OverlayAnchor::BottomCenter,
+            margin: OverlayMargin::new_bottom(700),
+            scale_margin: true,
+            close_handle: Arc::new(AtomicBool::new(false)),
+            backend: Backend::Auto,
         }
-
-        Ok(())
     }
 }
 
-fn show_overlay(
-    overlay: Overlay,
-    close_handle: Arc<AtomicBool>,
-) -> anyhow::Result<()> {
+fn show_overlay(overlay: Overlay, settings: ShowOverlaySettings) -> anyhow::Result<()> {
+    let margin = if settings.scale_margin {
+        settings.margin.scale(overlay.scale)
+    } else {
+        settings.margin
+    };
+
     let conf = OverlayConf {
         width: ((PIXEL_SINGLE_REWARD_WIDTH * overlay.items.len() as f32) * overlay.scale) as u32,
         height: ((PIXEL_REWARD_HEIGHT / 2.0) * overlay.scale) as u32,
-        anchor: OverlayAnchor::BottomCenter,
-        margin: OverlayMargin::new_bottom((700.0 * overlay.scale) as i32),
-        close_handle,
-        ..OverlayConf::default()
+        anchor: settings.anchor,
+        margin,
+        close_handle: settings.close_handle,
     };
 
-    let mut backend = overlay::backend::get_backend(overlay::backend::Backend::Wayland)
-        .ok_or_else(|| anyhow::anyhow!("Backend not found"))?;
+    let mut backend =
+        get_backend(settings.backend).ok_or_else(|| anyhow::anyhow!("Backend not found"))?;
 
     backend.run(conf, overlay)?;
-
-    Ok(())
-}
-
-pub async fn _main() -> anyhow::Result<()> {
-    // // https://api.warframestat.us/wfinfo/prices
-    // let prices = std::fs::File::open("prices.json")?;
-    // let prices = load_from_reader(prices)?;
-    // // https://api.warframestat.us/wfinfo/filtered_items
-    // let filtered_items = std::fs::File::open("filtered_items.json")?;
-    // let filtered_items = load_from_reader(filtered_items)?;
-
-    // let items = Items::new(prices, filtered_items);
-
-    // let _ = tokio::spawn(async { keybind_x11() });
-
 
     Ok(())
 }

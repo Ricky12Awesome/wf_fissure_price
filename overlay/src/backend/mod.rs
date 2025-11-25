@@ -1,5 +1,6 @@
-use crate::{OverlayConf, OverlayRenderer};
 use femtovg::Renderer;
+
+use crate::{OverlayConf, OverlayRenderer};
 
 #[cfg(feature = "wayland")]
 pub mod wayland;

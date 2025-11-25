@@ -1,16 +1,19 @@
 #![allow(unused)]
 
-use crate::wfinfo::item_data::{DucatItem, FilteredItems};
-use crate::wfinfo::price_data::PriceItem;
-use serde::Deserialize;
-use serde::de::DeserializeOwned;
 use std::collections::HashMap;
 use std::io::Read;
 
+use serde::Deserialize;
+use serde::de::DeserializeOwned;
+
+use crate::wfinfo::item_data::{DucatItem, FilteredItems};
+use crate::wfinfo::price_data::PriceItem;
+
 pub mod price_data {
-    use super::*;
     use palette::num::MinMax;
     use serde::Serialize;
+
+    use super::*;
 
     #[derive(Clone, Debug, Serialize, Deserialize)]
     pub struct PriceItem {
@@ -184,9 +187,7 @@ impl Items {
         } = filtered_items;
 
         items.extend(
-            ignored_items
-                .into_iter()
-                .map(|(name, _)| Item::new(name, None, None, true, false)),
+            ignored_items.into_keys().map(|name| Item::new(name, None, None, true, false)),
         );
 
         let eqmt = eqmt
@@ -246,10 +247,7 @@ impl Items {
 
             let best_matched_token = best_match.tokens[i].clone();
 
-            current_matches = current_matches
-                .into_iter()
-                .filter(|item| item.tokens[i] == best_matched_token)
-                .collect();
+            current_matches.retain(|item| item.tokens[i] == best_matched_token);
         }
 
         current_matches.into_iter().next()

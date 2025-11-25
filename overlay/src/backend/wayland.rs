@@ -1,16 +1,13 @@
-#![cfg(feature = "wayland")]
-
-use crate::backend::OverlayBackend;
-use crate::{OverlayAnchor, OverlayConf, OverlayRenderer, OverlayInfo};
-use femtovg::renderer::OpenGl;
-use femtovg::{Canvas, Color};
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::time::{Duration, Instant};
+
+use femtovg::renderer::OpenGl;
+use femtovg::{Canvas, Color};
 use thiserror::Error;
 use wayland_client::backend::WaylandError as WaylandBackendError;
 use wayland_client::globals::{
-    BindError, GlobalError, GlobalList, GlobalListContents, registry_queue_init,
+    BindError, GlobalError, GlobalList, GlobalListContents, registry_queue_init
 };
 use wayland_client::protocol::wl_compositor::WlCompositor;
 use wayland_client::protocol::wl_keyboard;
@@ -18,14 +15,14 @@ use wayland_client::protocol::wl_keyboard::WlKeyboard;
 use wayland_client::protocol::wl_region::WlRegion;
 use wayland_client::protocol::wl_registry::WlRegistry;
 use wayland_client::protocol::wl_seat::WlSeat;
-use wayland_client::{
-    ConnectError, Connection, Dispatch, DispatchError, Proxy, QueueHandle,
-    protocol::wl_surface::WlSurface,
-};
+use wayland_client::protocol::wl_surface::WlSurface;
+use wayland_client::{ConnectError, Connection, Dispatch, DispatchError, Proxy, QueueHandle};
 use wayland_protocols_wlr::layer_shell::v1::client::{zwlr_layer_shell_v1, zwlr_layer_surface_v1};
 use zwlr_layer_shell_v1::{Layer, ZwlrLayerShellV1};
-use zwlr_layer_surface_v1::ZwlrLayerSurfaceV1;
-use zwlr_layer_surface_v1::{Anchor, KeyboardInteractivity};
+use zwlr_layer_surface_v1::{Anchor, KeyboardInteractivity, ZwlrLayerSurfaceV1};
+
+use crate::backend::OverlayBackend;
+use crate::{OverlayAnchor, OverlayConf, OverlayInfo, OverlayRenderer};
 
 #[derive(Error, Debug)]
 pub enum WaylandError {
@@ -54,18 +51,18 @@ pub enum WaylandError {
 #[allow(dead_code)]
 pub struct WaylandOverlayBackend;
 
-impl Into<Anchor> for OverlayAnchor {
-    fn into(self) -> Anchor {
-        match self {
-            Self::TopLeft => Anchor::Top | Anchor::Left,
-            Self::TopCenter => Anchor::Top,
-            Self::TopRight => Anchor::Top | Anchor::Right,
-            Self::CenterLeft => Anchor::Top | Anchor::Bottom | Anchor::Left,
-            Self::Center => Anchor::Top | Anchor::Bottom,
-            Self::CenterRight => Anchor::Top | Anchor::Bottom | Anchor::Right,
-            Self::BottomLeft => Anchor::Bottom | Anchor::Left,
-            Self::BottomCenter => Anchor::Bottom,
-            Self::BottomRight => Anchor::Bottom | Anchor::Right,
+impl From<OverlayAnchor> for Anchor {
+    fn from(overlay_anchor: OverlayAnchor) -> Anchor {
+        match overlay_anchor {
+            OverlayAnchor::TopLeft => Anchor::Top | Anchor::Left,
+            OverlayAnchor::TopCenter => Anchor::Top,
+            OverlayAnchor::TopRight => Anchor::Top | Anchor::Right,
+            OverlayAnchor::CenterLeft => Anchor::Top | Anchor::Bottom | Anchor::Left,
+            OverlayAnchor::Center => Anchor::Top | Anchor::Bottom,
+            OverlayAnchor::CenterRight => Anchor::Top | Anchor::Bottom | Anchor::Right,
+            OverlayAnchor::BottomLeft => Anchor::Bottom | Anchor::Left,
+            OverlayAnchor::BottomCenter => Anchor::Bottom,
+            OverlayAnchor::BottomRight => Anchor::Bottom | Anchor::Right,
         }
     }
 }
@@ -138,8 +135,8 @@ impl WaylandOverlayBackend {
         let egl_native_display_type = backend.display_ptr() as _;
         let egl_native_window_type = wl_egl_surface.ptr() as _;
 
-        let egl_display = egl::get_display(egl_native_display_type)
-            .ok_or_else(|| WaylandError::EglDisplayNotFound)?;
+        let egl_display =
+            egl::get_display(egl_native_display_type).ok_or(WaylandError::EglDisplayNotFound)?;
 
         let mut major = 0;
         let mut minor = 0;
@@ -154,12 +151,12 @@ impl WaylandOverlayBackend {
             egl::EGL_NONE,
         ];
 
-        let egl_config = egl::choose_config(egl_display, &attribs, 1)
-            .ok_or_else(|| WaylandError::EglSurfaceNotFound)?;
+        let egl_config =
+            egl::choose_config(egl_display, &attribs, 1).ok_or(WaylandError::EglSurfaceNotFound)?;
 
         let egl_surface =
             egl::create_window_surface(egl_display, egl_config, egl_native_window_type, &[])
-                .ok_or_else(|| WaylandError::EglSurfaceNotFound)?;
+                .ok_or(WaylandError::EglSurfaceNotFound)?;
 
         let context_attribs = [egl::EGL_CONTEXT_CLIENT_VERSION, 2, egl::EGL_NONE];
         let egl_context = egl::create_context(
@@ -168,7 +165,7 @@ impl WaylandOverlayBackend {
             std::ptr::null_mut(),
             &context_attribs,
         )
-        .ok_or_else(|| WaylandError::EglContextNotFound)?;
+        .ok_or(WaylandError::EglContextNotFound)?;
 
         egl::make_current(egl_display, egl_surface, egl_surface, egl_context);
 
@@ -351,11 +348,8 @@ impl Dispatch<ZwlrLayerSurfaceV1, ()> for WlState {
         _conn: &Connection,
         _qh: &QueueHandle<Self>,
     ) {
-        match event {
-            zwlr_layer_surface_v1::Event::Configure { serial, .. } => {
-                proxy.ack_configure(serial);
-            }
-            _ => {}
+        if let zwlr_layer_surface_v1::Event::Configure { serial, .. } = event {
+            proxy.ack_configure(serial);
         }
     }
 }

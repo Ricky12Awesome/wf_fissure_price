@@ -1,12 +1,11 @@
+use image::DynamicImage;
+use log::debug;
 use tesseract::Tesseract;
 
 use crate::theme::{DEFAULT_THEMES, Theme, Themes};
 use crate::util::{
-    FILTER_BACKGROUND, FILTER_FOREGROUND, PIXEL_REWARD_HEIGHT, PIXEL_REWARD_LINE_HEIGHT,
-    PIXEL_REWARD_WIDTH, PIXEL_REWARD_Y, get_scale,
+    FILTER_BACKGROUND, FILTER_FOREGROUND, PIXEL_REWARD_HEIGHT, PIXEL_REWARD_LINE_HEIGHT, PIXEL_REWARD_WIDTH, PIXEL_REWARD_Y, get_scale
 };
-use image::DynamicImage;
-use log::debug;
 
 pub fn extract_parts(image: &DynamicImage, theme: &Theme, scale: f32) -> Vec<DynamicImage> {
     // image.save("input.png").unwrap();
@@ -118,7 +117,7 @@ pub fn image_to_string(image: &DynamicImage) -> crate::Result<String> {
 
     let buffer = image
         .as_flat_samples_u8()
-        .ok_or_else(|| crate::Error::InvalidImageFormat)?;
+        .ok_or(crate::Error::InvalidImageFormat)?;
 
     ocr = ocr.set_frame(
         buffer.samples,
@@ -143,7 +142,7 @@ pub fn reward_image_to_reward_names<'a>(
     theme: Option<&'a Theme>,
 ) -> crate::Result<(Vec<String>, &'a Theme)> {
     let themes = themes.unwrap_or(&DEFAULT_THEMES);
-    let scale = get_scale(&image).ok_or_else(|| crate::Error::InvalidWindowSize)?;
+    let scale = get_scale(&image).ok_or(crate::Error::InvalidWindowSize)?;
 
     let theme = theme
         .or_else(|| themes.detect_theme(&image, scale))
@@ -153,7 +152,10 @@ pub fn reward_image_to_reward_names<'a>(
 
     debug!("Extracted part images");
 
-    let text = parts.iter().map(|image| image_to_string(image)).collect::<Result<_, _>>()?;
+    let text = parts
+        .iter()
+        .map(image_to_string)
+        .collect::<Result<_, _>>()?;
 
     Ok((text, theme))
 }

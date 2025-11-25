@@ -1,12 +1,12 @@
 pub mod backend;
 
-use femtovg::{Canvas, Paint, Renderer, TextMetrics};
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::time::{Duration, Instant};
-use thiserror::Error;
 
 pub use femtovg;
+use femtovg::{Canvas, Paint, Renderer, TextMetrics};
+use thiserror::Error;
 
 #[derive(Error, Debug)]
 pub enum Error {
@@ -104,12 +104,14 @@ impl OverlayMargin {
             ..Self::ZERO
         }
     }
+
     pub const fn new_bottom(bottom: i32) -> Self {
         Self {
             bottom,
             ..Self::ZERO
         }
     }
+
     pub const fn new_left(left: i32) -> Self {
         Self { left, ..Self::ZERO }
     }
@@ -129,17 +131,26 @@ impl OverlayMargin {
     pub const fn left(self, left: i32) -> Self {
         Self { left, ..self }
     }
-}
 
-impl Into<(i32, i32, i32, i32)> for OverlayMargin {
-    fn into(self) -> (i32, i32, i32, i32) {
-        (self.top, self.right, self.bottom, self.left)
+    pub const fn scale(self, scale: f32) -> Self {
+        Self {
+            top: (self.top as f32 * scale) as i32,
+            right: (self.right as f32 * scale) as i32,
+            bottom: (self.bottom as f32 * scale) as i32,
+            left: (self.left as f32 * scale) as i32,
+        }
     }
 }
 
-impl Into<[i32; 4]> for OverlayMargin {
-    fn into(self) -> [i32; 4] {
-        [self.top, self.right, self.bottom, self.left]
+impl From<OverlayMargin> for (i32, i32, i32, i32) {
+    fn from(margin: OverlayMargin) -> (i32, i32, i32, i32) {
+        (margin.top, margin.right, margin.bottom, margin.left)
+    }
+}
+
+impl From<OverlayMargin> for [i32; 4] {
+    fn from(margin: OverlayMargin) -> [i32; 4] {
+        [margin.top, margin.right, margin.bottom, margin.left]
     }
 }
 
