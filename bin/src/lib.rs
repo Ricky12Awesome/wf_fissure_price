@@ -1,44 +1,21 @@
 pub mod geometry;
 pub mod overlay;
+mod util;
 
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 
 use image::DynamicImage;
 use lib::ocr;
-use lib::theme::Theme;
-use lib::util::{PIXEL_REWARD_HEIGHT, PIXEL_SINGLE_REWARD_WIDTH, get_scale};
-use lib::wfinfo::{Item, Items, load_from_reader};
+use lib::ocr::reward_image_to_items;
+use lib::util::{PIXEL_MARGIN_TOP, PIXEL_REWARD_HEIGHT, PIXEL_SINGLE_REWARD_WIDTH, get_scale};
+use lib::wfinfo::{Items, load_from_reader};
 use log::debug;
 use overlay::backend::{Backend, OverlayBackend, get_backend};
 use overlay::{OverlayAnchor, OverlayConf, OverlayMargin};
 
-use crate::geometry::Desktop;
+use crate::geometry::GeometryMethod;
 use crate::overlay::Overlay;
-
-pub fn get_items<'a>(image: DynamicImage) -> anyhow::Result<(Vec<Item>, &'a Theme)> {
-    let (text, theme) = ocr::reward_image_to_reward_names(image, None, None)?;
-
-    // https://api.warframestat.us/wfinfo/prices
-    let prices = std::fs::File::open("prices.json")?;
-    let prices = load_from_reader(prices)?;
-    // https://api.warframestat.us/wfinfo/filtered_items
-    let filtered_items = std::fs::File::open("filtered_items.json")?;
-    let filtered_items = load_from_reader(filtered_items)?;
-
-    let items = Items::new(prices, filtered_items);
-
-    let mut result = vec![];
-    for item_og in text {
-        let Some(item) = items.find_item(&item_og) else {
-            return Ok((vec![], theme));
-        };
-
-        result.push(item);
-    }
-
-    Ok((result, theme))
-}
 
 pub fn test(image: DynamicImage) -> anyhow::Result<()> {
     let (text, _) = ocr::reward_image_to_reward_names(image, None, None)?;
@@ -67,17 +44,145 @@ pub fn test(image: DynamicImage) -> anyhow::Result<()> {
     Ok(())
 }
 
-#[allow(dead_code)]
-fn keybind_x11() -> anyhow::Result<()> {
+#[derive(Debug, Clone)]
+pub struct ShortcutSettings<'a> {
+    pub id: &'a str,
+    pub preferred_trigger: &'a str,
+}
+
+impl Default for ShortcutSettings<'_> {
+    fn default() -> Self {
+        Self {
+            id: "wf_fissure_price_activate",
+            preferred_trigger: "Home",
+        }
+    }
+}
+
+#[cfg(test)]
+#[test]
+fn test1() {}
+
+#[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
+pub enum X11Key {
+    Mod(x11rb::protocol::xproto::ModMask),
+    Keysym(xkbcommon::xkb::Keysym),
+}
+
+impl X11Key {
+    pub fn to_mod(self) -> Option<x11rb::protocol::xproto::ModMask> {
+        match self {
+            X11Key::Mod(mod_mask) => Some(mod_mask),
+            _ => None,
+        }
+    }
+
+    pub fn to_keysym(self) -> Option<xkbcommon::xkb::Keysym> {
+        match self {
+            X11Key::Keysym(keysym) => Some(keysym),
+            _ => None,
+        }
+    }
+}
+
+impl std::str::FromStr for X11Key {
+    type Err = anyhow::Error;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        use x11rb::protocol::xproto::ModMask;
+        use xkbcommon::xkb::keysyms::KEY_NoSymbol;
+        use xkbcommon::xkb::{KEYSYM_CASE_INSENSITIVE, Keysym, keysym_from_name};
+
+        let s = s.to_lowercase();
+
+        match s.as_str() {
+            // Modifiers
+            "control" | "ctrl" => Ok(Self::Mod(ModMask::CONTROL)),
+            "alt" | "m1" | "mod1" => Ok(Self::Mod(ModMask::M1)),
+            "shift" => Ok(Self::Mod(ModMask::SHIFT)),
+            "super" | "logo" | "meta" | "m4" | "mod4" => Ok(Self::Mod(ModMask::M4)),
+            "m2" | "mod2" => Ok(Self::Mod(ModMask::M2)),
+            "m3" | "mod3" => Ok(Self::Mod(ModMask::M3)),
+            key => {
+                let len = key.chars().size_hint().1.unwrap_or(0);
+                let key = if len == 1 {
+                    Keysym::from_char(key.chars().next().unwrap())
+                } else {
+                    keysym_from_name(key, KEYSYM_CASE_INSENSITIVE)
+                };
+
+                if key.raw() == KEY_NoSymbol {
+                    Err(anyhow::anyhow!("{s} not a valid key"))
+                } else {
+                    Ok(Self::Keysym(key))
+                }
+            }
+        }
+    }
+}
+
+pub fn x11_shortcut_parser(
+    shortcut: &str,
+) -> anyhow::Result<(x11rb::protocol::xproto::ModMask, xkbcommon::xkb::Keysym)> {
+    use std::str::FromStr;
+
+    use x11rb::protocol::xproto::ModMask;
+
+    use crate::util::SplitEveryOtherIterator;
+
+    let mut keys = shortcut
+        .split_every_other("+")
+        .map(X11Key::from_str)
+        .collect::<anyhow::Result<Vec<_>>>()?;
+
+    keys.sort();
+
+    let modifiers = keys
+        .iter()
+        .map_while(|key| key.to_mod())
+        .fold(ModMask::from(0u8), |a, b| a | b);
+
+    keys.retain(|key| matches!(key, X11Key::Keysym(_)));
+
+    match keys.len() {
+        1 => {
+            let Some(key) = keys[0].to_keysym() else {
+                return Err(anyhow::anyhow!("Not a key"));
+            };
+
+            Ok((modifiers, key))
+        }
+        0 => Err(anyhow::anyhow!("Not enough keys, must be exactly 1")),
+        _ => Err(anyhow::anyhow!("Too many keys, must be exactly 1")),
+    }
+}
+
+pub async fn x11_shortcut(
+    settings: ShortcutSettings<'_>,
+    callback: impl AsyncFn() -> anyhow::Result<()>,
+) -> anyhow::Result<()> {
     use x11rb::connection::Connection;
     use x11rb::protocol::xproto::*;
     use x11rb::rust_connection::RustConnection;
 
     let (conn, screen_num) = RustConnection::connect(None)?;
     let screen = &conn.setup().roots[screen_num];
+    let min_keycode = conn.setup().min_keycode;
+    let max_keycode = conn.setup().max_keycode;
 
-    let keycode = 58; // example: 'm'
-    let modmask = ModMask::CONTROL | ModMask::M1;
+    let mappings = conn
+        .get_keyboard_mapping(min_keycode, max_keycode - min_keycode + 1)?
+        .reply()?;
+
+    let (modmask, keysym) = x11_shortcut_parser(settings.preferred_trigger)?;
+
+    let keycode = mappings
+        .keysyms
+        .chunks(mappings.keysyms_per_keycode as usize)
+        .enumerate()
+        .find(|(_, keysyms)| keysyms.contains(&keysym.raw()))
+        .map(|(i, _)| i as u8 + min_keycode)
+        .ok_or_else(|| anyhow::anyhow!("Couldn't find keycode for {keysym:?}"))?;
 
     conn.grab_key(
         false,
@@ -87,17 +192,22 @@ fn keybind_x11() -> anyhow::Result<()> {
         GrabMode::ASYNC,
         GrabMode::ASYNC,
     )?;
+
     conn.flush()?;
 
     loop {
         let event = conn.wait_for_event()?;
+
         if let x11rb::protocol::Event::KeyPress(_) = event {
-            println!("X11 shortcut triggered!");
+            callback().await?;
         }
     }
 }
 
-pub async fn wayland_keybind(callback: impl AsyncFn() -> anyhow::Result<()>) -> anyhow::Result<()> {
+pub async fn portal_shortcut(
+    settings: ShortcutSettings<'_>,
+    callback: impl AsyncFn() -> anyhow::Result<()>,
+) -> anyhow::Result<()> {
     use ashpd::desktop::global_shortcuts::{GlobalShortcuts, NewShortcut};
     use tokio_stream::StreamExt;
 
@@ -105,10 +215,10 @@ pub async fn wayland_keybind(callback: impl AsyncFn() -> anyhow::Result<()>) -> 
     let session = portal.create_session().await?;
 
     let shortcut = NewShortcut::new(
-        "wf_fissure_price_activate",
+        settings.id,
         "Activates this program to screenshot warframe and show overlay",
     )
-    .preferred_trigger(Some("Home"));
+    .preferred_trigger(settings.preferred_trigger);
 
     let request = portal.bind_shortcuts(&session, &[shortcut], None).await?;
 
@@ -125,6 +235,11 @@ pub async fn wayland_keybind(callback: impl AsyncFn() -> anyhow::Result<()>) -> 
 
     let mut activated = portal.receive_activated().await?;
 
+    // workaround, for whatever reason idky IDE (RustRover) gives false-positive error
+    // "Value used after being moved [E0382]"
+    // even though programs run just fine without it
+    let callback = &callback;
+
     while activated.next().await.is_some() {
         callback().await?;
     }
@@ -132,7 +247,7 @@ pub async fn wayland_keybind(callback: impl AsyncFn() -> anyhow::Result<()>) -> 
     Ok(())
 }
 
-pub async fn activate(settings: ShowOverlaySettings) -> anyhow::Result<()> {
+pub async fn take_screenshot(method: GeometryMethod) -> anyhow::Result<DynamicImage> {
     use ashpd::desktop::screenshot::Screenshot;
 
     let ss = Screenshot::request()
@@ -143,13 +258,17 @@ pub async fn activate(settings: ShowOverlaySettings) -> anyhow::Result<()> {
 
     let ss = ss.response()?;
     let image = image::open(ss.uri().path())?;
-    let geometry = Desktop::detect().get_active_window_geometry()?;
+    let geometry = method.get_active_window_geometry()?;
     let [x, y, w, h] = geometry.into();
 
     let image = image.crop_imm(x, y, w, h);
 
-    let scale = get_scale(&image).unwrap_or(0.5);
-    let (items, theme) = get_items(image)?;
+    Ok(image)
+}
+
+pub async fn activate(image: DynamicImage, settings: &ShowOverlaySettings) -> anyhow::Result<()> {
+    let scale = get_scale(&image)?;
+    let (items, theme) = reward_image_to_items(&settings.items, image)?;
 
     // println!("{}", serde_json::to_string(&items)?);
 
@@ -158,13 +277,13 @@ pub async fn activate(settings: ShowOverlaySettings) -> anyhow::Result<()> {
     // let items: Vec<PriceItem> = serde_json::from_str(
     //     r#"[{"name":"Octavia Prime Systems","yesterday_vol":113,"today_vol":114,"custom_avg":8.1},{"name":"Octavia Prime Blueprint","yesterday_vol":176,"today_vol":189,"custom_avg":20.4},{"name":"Tenora Prime Blueprint","yesterday_vol":7,"today_vol":20,"custom_avg":3.8},{"name":"Harrow Prime Systems","yesterday_vol":97,"today_vol":119,"custom_avg":29.6}]"#,
     // )?;
-    // let scale = 1440.0 / 2160.0;
-    // let scale = 1080.0 / 2160.0;
-    // let scale = 2160.0 / 2160.0;
+    // let scale = 2.0;
 
     if items.is_empty() {
         return Ok(());
     }
+
+    let max_len = items.iter().map(|item| item.name.len()).max().unwrap();
 
     let highest = items
         .iter()
@@ -174,6 +293,7 @@ pub async fn activate(settings: ShowOverlaySettings) -> anyhow::Result<()> {
     let overlay = Overlay {
         scale,
         highest: highest.name.clone(),
+        max_len,
         items,
         theme,
     };
@@ -183,8 +303,10 @@ pub async fn activate(settings: ShowOverlaySettings) -> anyhow::Result<()> {
 
 #[derive(Debug, Clone)]
 pub struct ShowOverlaySettings {
+    pub items: Arc<Items>,
     pub anchor: OverlayAnchor,
     pub margin: OverlayMargin,
+    pub scale: Option<f32>,
     pub scale_margin: bool,
     pub close_handle: Arc<AtomicBool>,
     pub backend: Backend,
@@ -193,28 +315,31 @@ pub struct ShowOverlaySettings {
 impl Default for ShowOverlaySettings {
     fn default() -> Self {
         Self {
-            anchor: OverlayAnchor::BottomCenter,
-            margin: OverlayMargin::new_bottom(700),
+            items: Default::default(),
+            anchor: OverlayAnchor::TopCenter,
+            margin: OverlayMargin::new_top(PIXEL_MARGIN_TOP as i32),
             scale_margin: true,
+            scale: None,
             close_handle: Arc::new(AtomicBool::new(false)),
             backend: Backend::Auto,
         }
     }
 }
 
-fn show_overlay(overlay: Overlay, settings: ShowOverlaySettings) -> anyhow::Result<()> {
+fn show_overlay(overlay: Overlay, settings: &ShowOverlaySettings) -> anyhow::Result<()> {
+    let scale = settings.scale.unwrap_or(overlay.scale);
     let margin = if settings.scale_margin {
-        settings.margin.scale(overlay.scale)
+        settings.margin.scale(scale)
     } else {
         settings.margin
     };
 
     let conf = OverlayConf {
-        width: ((PIXEL_SINGLE_REWARD_WIDTH * overlay.items.len() as f32) * overlay.scale) as u32,
-        height: ((PIXEL_REWARD_HEIGHT / 2.0) * overlay.scale) as u32,
+        width: ((PIXEL_SINGLE_REWARD_WIDTH * overlay.items.len() as f32) * scale) as u32,
+        height: ((PIXEL_REWARD_HEIGHT / 2.0) * scale) as u32,
         anchor: settings.anchor,
         margin,
-        close_handle: settings.close_handle,
+        close_handle: settings.close_handle.clone(),
     };
 
     let mut backend =

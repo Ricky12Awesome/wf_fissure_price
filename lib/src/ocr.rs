@@ -6,6 +6,7 @@ use crate::theme::{DEFAULT_THEMES, Theme, Themes};
 use crate::util::{
     FILTER_BACKGROUND, FILTER_FOREGROUND, PIXEL_REWARD_HEIGHT, PIXEL_REWARD_LINE_HEIGHT, PIXEL_REWARD_WIDTH, PIXEL_REWARD_Y, get_scale
 };
+use crate::wfinfo::{Item, Items};
 
 pub fn extract_parts(image: &DynamicImage, theme: &Theme, scale: f32) -> Vec<DynamicImage> {
     // image.save("input.png").unwrap();
@@ -142,7 +143,7 @@ pub fn reward_image_to_reward_names<'a>(
     theme: Option<&'a Theme>,
 ) -> crate::Result<(Vec<String>, &'a Theme)> {
     let themes = themes.unwrap_or(&DEFAULT_THEMES);
-    let scale = get_scale(&image).ok_or(crate::Error::InvalidWindowSize)?;
+    let scale = get_scale(&image)?;
 
     let theme = theme
         .or_else(|| themes.detect_theme(&image, scale))
@@ -158,4 +159,22 @@ pub fn reward_image_to_reward_names<'a>(
         .collect::<Result<_, _>>()?;
 
     Ok((text, theme))
+}
+
+pub fn reward_image_to_items<'a>(
+    items: &Items,
+    image: DynamicImage,
+) -> crate::Result<(Vec<Item>, &'a Theme)> {
+    let (text, theme) = reward_image_to_reward_names(image, None, None)?;
+
+    let mut result = vec![];
+    for item_og in text {
+        let Some(item) = items.find_item(&item_og) else {
+            return Ok((vec![], theme));
+        };
+
+        result.push(item);
+    }
+
+    Ok((result, theme))
 }

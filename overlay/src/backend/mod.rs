@@ -15,7 +15,7 @@ pub trait OverlayBackend {
     ) -> Result<(), crate::Error>;
 }
 
-#[derive(Default, Debug, Clone, Eq, PartialEq)]
+#[derive(Default, Debug, Clone, Copy, Eq, PartialEq)]
 pub enum Backend {
     Wayland,
     X11,

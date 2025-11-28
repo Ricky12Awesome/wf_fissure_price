@@ -15,9 +15,10 @@ palette = { workspace = true }
 
 shell-words = { workspace = true }
 
-anyhow = {  workspace = true }
+anyhow = { workspace = true }
 ashpd = { workspace = true }
-tokio = { workspace = true }
 tokio-stream = { workspace = true }
+
 x11rb = { workspace = true }
 #xcap = { workspace = true}
+xkbcommon = { workspace = true }

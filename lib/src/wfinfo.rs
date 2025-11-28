@@ -161,7 +161,7 @@ impl Item {
     }
 }
 
-#[derive(Debug, Clone)]
+#[derive(Default, Debug, Clone)]
 pub struct Items {
     items: Vec<Item>,
     min_len: usize,
@@ -223,6 +223,14 @@ impl Items {
 }
 
 impl Items {
+    pub const fn min_len(&self) -> usize {
+        self.min_len
+    }
+
+    pub const fn max_len(&self) -> usize {
+        self.max_len
+    }
+
     pub fn find_item(&self, item_name: &str) -> Option<Item> {
         let item_name = item_name.trim();
 

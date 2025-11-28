@@ -9,8 +9,8 @@ pub mod wfinfo;
 pub enum Error {
     #[error("Unknown Theme")]
     UnknownTheme,
-    #[error("Window is not right size, width must be greater then height")]
-    InvalidWindowSize,
+    #[error("Invalid size, height > width: {1} > {0}")]
+    InvalidSize(u32, u32),
     #[error("Invalid Image Format")]
     InvalidImageFormat,
     #[error(transparent)]

@@ -3,9 +3,19 @@ name = "cli"
 version = "0.1.0"
 edition = "2024"
 
+[[bin]]
+name = "wffp-cli"
+path = "src/main.rs"
+
 [dependencies]
+lib = { path = "../lib" }
 bin = { path = "../bin" }
 
+image = { workspace = true }
+log = { workspace = true }
 tokio = { workspace = true }
 anyhow = { workspace = true }
 env_logger = { workspace = true }
+clap = { workspace = true }
+anstyle = { workspace = true }
+reqwest = { workspace = true }

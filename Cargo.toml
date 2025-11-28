@@ -17,18 +17,20 @@ serde_json = "1.0"
 serde-aux = "4.7"
 
 # Cli
-clap = { version = "4.5", features = ["default"] }
+clap = { version = "4.5", features = ["derive", "color", "help"] }
+anstyle = "1.0.13"
 
 # Bin Deps
 tokio = { version = "1.48", features = ["full"] }
 tokio-stream = { version = "0.1", features = ["full"] }
 env_logger = "0.11"
 anyhow = "1.0"
+shell-words = "1.1.0"
+reqwest = "0.12"
 
 femtovg = "0.19"
 egl = "0.2"
 
-shell-words = "1.1.0"
 
 # Wayland Deps
 ashpd = { version = "0.12", features = ["wayland"] }
@@ -38,7 +40,8 @@ wayland-egl = "0.32"
 
 # X11 Deps
 x11rb = "0.13.2"
-xcap = "0.7.1"
+xkbcommon = "0.9.0"
+#xcap = "0.7.1"
 
 [dev-dependencies]
 lib = { path = "lib" }

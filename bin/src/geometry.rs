@@ -11,7 +11,7 @@ pub struct HyprWindow {
     pub size: [u32; 2],
 }
 
-#[derive(Debug, Clone, Copy, Deserialize)]
+#[derive(Debug, Default, Clone, Copy, Deserialize)]
 pub struct Geometry {
     pub x: u32,
     pub y: u32,
@@ -86,19 +86,20 @@ pub fn custom_impl(cmd: String) -> anyhow::Result<Geometry> {
 }
 
 #[derive(Debug, Clone)]
-pub enum Desktop {
+pub enum GeometryMethod {
     Hyprland,
     Sway,
     Kde,
     Gnome,
     Unknown,
-    CustomStatic(Geometry),
+    Auto,
+    Static(Geometry),
     /// command must output 4 comma seperated numbers like: `x, y, width, height`
-    CustomCmd(String),
+    Command(String),
 }
 
-impl Desktop {
-    pub fn detect() -> Desktop {
+impl GeometryMethod {
+    pub fn detect() -> GeometryMethod {
         let Ok(xdg_current_desktop) = env::var("XDG_CURRENT_DESKTOP") else {
             return Self::Unknown;
         };
@@ -114,15 +115,24 @@ impl Desktop {
         }
     }
 
+    pub fn check_unsupported(&self) -> anyhow::Result<()> {
+        if matches!(self, Self::Hyprland | Self::Command(_) | Self::Static(_)) {
+            return Ok(())
+        };
+
+        Err(anyhow::anyhow!("Only hyprland is supported currently, try static or command method"))
+    }
+
     pub fn get_active_window_geometry(self) -> anyhow::Result<Geometry> {
         match self {
+            Self::Auto => Self::detect().get_active_window_geometry(),
             Self::Hyprland => hyprland_impl().map(Into::into),
             Self::Sway => Err(anyhow::anyhow!("Currently Unsupported")),
             Self::Kde => Err(anyhow::anyhow!("Currently Unsupported")),
             Self::Gnome => Err(anyhow::anyhow!("Currently Unsupported")),
-            Self::Unknown => Err(anyhow::anyhow!("Unknown desktop, try custom")),
-            Self::CustomStatic(w) => Ok(w),
-            Self::CustomCmd(cmd) => custom_impl(cmd),
+            Self::Unknown => Err(anyhow::anyhow!("Unknown desktop, try static or command method")),
+            Self::Static(w) => Ok(w),
+            Self::Command(cmd) => custom_impl(cmd),
         }
     }
 }

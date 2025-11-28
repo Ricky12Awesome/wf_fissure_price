@@ -1,13 +1,15 @@
-pub(crate) use ::overlay::*;
+pub use ::overlay::*;
 use lib::theme::Theme;
 use lib::util::PIXEL_SINGLE_REWARD_WIDTH;
 use lib::wfinfo::Item;
 use overlay::femtovg::{Canvas, Color, Paint, Renderer};
 use palette::Hsl;
 
+#[derive(Debug)]
 pub struct Overlay<'a> {
     pub scale: f32,
     pub items: Vec<Item>,
+    pub max_len: usize,
     pub highest: String,
     pub theme: &'a Theme,
 }
@@ -32,10 +34,11 @@ impl<T: Renderer> OverlayRenderer<T> for Overlay<'_> {
 
     fn draw(&mut self, canvas: &mut Canvas<T>, info: &OverlayInfo) -> Result<(), Error> {
         let pixel_single_reward_width = PIXEL_SINGLE_REWARD_WIDTH * self.scale;
+        let fs = PIXEL_SINGLE_REWARD_WIDTH / (self.max_len as f32 / 1.75);
 
         let primary = Paint::color(color_from_hsl(self.theme.primary))
             .with_line_width(1.0 * self.scale)
-            .with_font_size(38.0 * self.scale);
+            .with_font_size(fs * self.scale);
 
         let secondary = primary
             .clone() //
@@ -48,7 +51,7 @@ impl<T: Renderer> OverlayRenderer<T> for Overlay<'_> {
             0,
             canvas.width(),
             canvas.height(),
-            Color::rgba(0, 0, 0, 128),
+            Color::rgba(0, 0, 0, 160),
         );
 
         let mut line = femtovg::Path::new();
