@@ -18,6 +18,8 @@ pub enum Error {
     #[error(transparent)]
     SerdeJsonError(#[from] serde_json::Error),
     #[error(transparent)]
+    Reqwest(#[from] reqwest::Error),
+    #[error(transparent)]
     TessBaseApiSetImageSafetyError(#[from] tesseract::plumbing::TessBaseApiSetImageSafetyError),
     #[error(transparent)]
     TessBaseApiGetUtf8TextError(#[from] tesseract::plumbing::TessBaseApiGetUtf8TextError),

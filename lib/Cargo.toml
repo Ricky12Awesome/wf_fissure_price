@@ -16,3 +16,4 @@ palette = { workspace = true }
 levenshtein = { workspace = true }
 serde_json = { workspace = true }
 serde-aux = { workspace = true }
+reqwest = { workspace = true }

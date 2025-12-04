@@ -15,6 +15,7 @@ palette = "0.7"
 levenshtein = "1.0"
 serde_json = "1.0"
 serde-aux = "4.7"
+reqwest = { version = "0.12", features = ["json"] }
 
 # Cli
 clap = { version = "4.5", features = ["derive", "color", "help"] }
@@ -26,12 +27,11 @@ tokio-stream = { version = "0.1", features = ["full"] }
 env_logger = "0.11"
 anyhow = "1.0"
 shell-words = "1.1.0"
-reqwest = "0.12"
+dirs = "6.0"
 
 femtovg = "0.19"
 egl = "0.2"
-gl = "0.14.0"
-
+gl = "0.14"
 
 # Wayland Deps
 ashpd = { version = "0.12", features = ["wayland"] }

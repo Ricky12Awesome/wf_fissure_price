@@ -12,13 +12,13 @@ image = { workspace = true }
 serde = { workspace = true }
 serde_json = { workspace = true }
 palette = { workspace = true }
+dirs = { workspace = true }
 
 shell-words = { workspace = true }
 
 anyhow = { workspace = true }
-ashpd = { workspace = true }
 tokio-stream = { workspace = true }
-
+ashpd = { workspace = true }
 x11rb = { workspace = true }
 #xcap = { workspace = true}
 xkbcommon = { workspace = true }

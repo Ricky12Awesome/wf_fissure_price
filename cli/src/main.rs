@@ -1,12 +1,13 @@
 use std::path::PathBuf;
 use std::sync::Arc;
 
+use bin::cache::get_items;
 use bin::geometry::{Geometry, GeometryMethod};
 use bin::overlay::backend::OverlayMethod;
 use bin::overlay::{OverlayAnchor, OverlayMargin};
 use bin::{ShortcutSettings, ShowOverlaySettings, take_screenshot};
 use clap::{CommandFactory, Parser, ValueEnum};
-use lib::wfinfo::{Items, load_from_reader};
+use lib::wfinfo::Items;
 use log::error;
 
 #[derive(ValueEnum, Debug, Clone, Copy)]
@@ -245,21 +246,16 @@ struct Args {
     ///
     /// [requires: --now]
     image: Option<PathBuf>,
-    #[clap(long, short = 'p', default_value = "prices.json")]
+    #[clap(long, short = 'p')]
     /// Path to prices json file
     ///
     /// https://api.warframestat.us/wfinfo/prices
-    prices: PathBuf,
-    #[clap(
-        long,
-        short = 'f',
-        visible_alias = "fi",
-        default_value = "filtered_items.json"
-    )]
+    prices: Option<PathBuf>,
+    #[clap(long, short = 'f', visible_alias = "fi")]
     /// Path to filtered items file
     ///
     /// https://api.warframestat.us/wfinfo/filtered_items
-    filtered_items: PathBuf,
+    filtered_items: Option<PathBuf>,
     #[clap(long, short = 'O', visible_alias = "out")]
     /// If set, instead of showing overlay on screen, save it as image to this path
     ///
@@ -359,15 +355,18 @@ async fn activate(items: Arc<Items>, args: &Args) -> anyhow::Result<()> {
 }
 
 async fn run_program(args: &Args) -> anyhow::Result<()> {
-    // https://api.warframestat.us/wfinfo/prices
-    let prices = std::fs::File::open(&args.prices)?;
-    let prices = load_from_reader(prices)?;
+    let items = get_items(args.prices.clone(), args.filtered_items.clone()).await?;
 
-    // https://api.warframestat.us/wfinfo/filtered_items
-    let filtered_items = std::fs::File::open(&args.filtered_items)?;
-    let filtered_items = load_from_reader(filtered_items)?;
+    // // https://api.warframestat.us/wfinfo/prices
+    // let prices = std::fs::File::open(&args.prices)?;
+    // let prices = load_from_reader(prices)?;
+    //
+    // // https://api.warframestat.us/wfinfo/filtered_items
+    // let filtered_items = std::fs::File::open(&args.filtered_items)?;
+    // let filtered_items = load_from_reader(filtered_items)?;
 
-    let items = Items::new(prices, filtered_items);
+    // let items = Items::new(prices, filtered_items);
+
     let items = Arc::new(items);
 
     if args.now {

@@ -1,49 +1,22 @@
 pub mod geometry;
 pub mod overlay;
 mod util;
+pub mod cache;
 
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 
 use image::DynamicImage;
-use lib::ocr;
 use lib::ocr::reward_image_to_items;
 use lib::util::{PIXEL_MARGIN_TOP, PIXEL_REWARD_HEIGHT, PIXEL_SINGLE_REWARD_WIDTH, get_scale};
-use lib::wfinfo::{Items, load_from_reader};
+use lib::wfinfo::Items;
 use log::debug;
 use overlay::backend::{OverlayBackend, OverlayMethod, get_backend};
 use overlay::{OverlayAnchor, OverlayConf, OverlayMargin};
 
 use crate::geometry::GeometryMethod;
 use crate::overlay::Overlay;
-
-pub fn test(image: DynamicImage) -> anyhow::Result<()> {
-    let (text, _) = ocr::reward_image_to_reward_names(image, None, None)?;
-
-    // https://api.warframestat.us/wfinfo/prices
-    let prices = std::fs::File::open("prices.json")?;
-    let prices = load_from_reader(prices)?;
-    // https://api.warframestat.us/wfinfo/filtered_items
-    let filtered_items = std::fs::File::open("filtered_items.json")?;
-    let filtered_items = load_from_reader(filtered_items)?;
-
-    let items = Items::new(prices, filtered_items);
-
-    for item_og in text {
-        let Some(item) = items.find_item(&item_og) else {
-            println!("[ {item_og} ]: not found");
-            continue;
-        };
-
-        print!("[ {item_og} ]: ");
-        print!("{}", item.name);
-        print!(" [plat: {}]", item.platinum.unwrap_or(0.0));
-        println!()
-    }
-
-    Ok(())
-}
 
 #[derive(Debug, Clone)]
 pub struct ShortcutSettings<'a> {

@@ -2,124 +2,112 @@
 
 use std::collections::HashMap;
 use std::io::Read;
+use std::time::Duration;
 
-use serde::Deserialize;
+use palette::num::MinMax;
 use serde::de::DeserializeOwned;
+use serde::{Deserialize, Serialize};
 
-use crate::wfinfo::item_data::{DucatItem, FilteredItems};
-use crate::wfinfo::price_data::PriceItem;
+pub type PriceItems = Vec<PriceItem>;
 
-pub mod price_data {
-    use palette::num::MinMax;
-    use serde::Serialize;
-
-    use super::*;
-
-    #[derive(Clone, Debug, Serialize, Deserialize)]
-    pub struct PriceItem {
-        pub name: String,
-        #[serde(deserialize_with = "serde_aux::prelude::deserialize_number_from_string")]
-        pub custom_avg: f32,
-    }
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct PriceItem {
+    pub name: String,
+    #[serde(deserialize_with = "serde_aux::prelude::deserialize_number_from_string")]
+    pub custom_avg: f32,
 }
 
-pub mod item_data {
-    use std::collections::HashMap;
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct DucatItem {
+    #[serde(default)]
+    pub ducats: usize,
+}
 
-    use super::*;
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub enum EquipmentType {
+    Warframes,
+    Primary,
+    Secondary,
+    Melee,
+    Sentinels,
+    Archwing,
+    #[serde(rename = "Arch-Gun")]
+    ArchGun,
+    Skins,
+}
 
-    #[derive(Clone, Debug, Deserialize)]
-    pub struct DucatItem {
-        #[serde(default)]
-        pub ducats: usize,
-    }
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct EquipmentItem {
+    #[serde(rename = "type")]
+    pub item_type: EquipmentType,
+    pub vaulted: bool,
+    pub parts: HashMap<String, DucatItem>,
+}
 
-    #[derive(Clone, Debug, Deserialize)]
-    pub enum EquipmentType {
-        Warframes,
-        Primary,
-        Secondary,
-        Melee,
-        Sentinels,
-        Archwing,
-        #[serde(rename = "Arch-Gun")]
-        ArchGun,
-        Skins,
-    }
+#[derive(Copy, Clone, Debug, Serialize, Deserialize)]
+pub enum Refinement {
+    Intact,
+    Exceptional,
+    Flawless,
+    Radiant,
+}
 
-    #[derive(Clone, Debug, Deserialize)]
-    pub struct EquipmentItem {
-        #[serde(rename = "type")]
-        pub item_type: EquipmentType,
-        pub vaulted: bool,
-        pub parts: HashMap<String, DucatItem>,
-    }
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Relic {
+    pub vaulted: bool,
+    pub rare1: Option<String>,
+    pub uncommon1: Option<String>,
+    pub uncommon2: Option<String>,
+    pub common1: Option<String>,
+    pub common2: Option<String>,
+    pub common3: Option<String>,
+}
 
-    #[derive(Copy, Clone, Debug)]
-    pub enum Refinement {
-        Intact,
-        Exceptional,
-        Flawless,
-        Radiant,
-    }
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct Relics {
+    #[serde(rename = "Lith")]
+    pub lith: HashMap<String, Relic>,
+    #[serde(rename = "Neo")]
+    pub neo: HashMap<String, Relic>,
+    #[serde(rename = "Meso")]
+    pub meso: HashMap<String, Relic>,
+    #[serde(rename = "Axi")]
+    pub axi: HashMap<String, Relic>,
+}
 
-    #[derive(Clone, Debug, Deserialize)]
-    pub struct Relic {
-        pub vaulted: bool,
-        pub rare1: Option<String>,
-        pub uncommon1: Option<String>,
-        pub uncommon2: Option<String>,
-        pub common1: Option<String>,
-        pub common2: Option<String>,
-        pub common3: Option<String>,
-    }
+#[derive(Clone, Debug, Serialize, Deserialize)]
+pub struct FilteredItems {
+    pub errors: Vec<String>,
+    pub relics: Relics,
+    pub eqmt: HashMap<String, EquipmentItem>,
+    pub ignored_items: HashMap<String, DucatItem>,
+}
 
-    #[derive(Clone, Debug, Deserialize)]
-    pub struct Relics {
-        #[serde(rename = "Lith")]
-        pub lith: HashMap<String, Relic>,
-        #[serde(rename = "Neo")]
-        pub neo: HashMap<String, Relic>,
-        #[serde(rename = "Meso")]
-        pub meso: HashMap<String, Relic>,
-        #[serde(rename = "Axi")]
-        pub axi: HashMap<String, Relic>,
-    }
-
-    #[derive(Clone, Debug, Deserialize)]
-    pub struct FilteredItems {
-        pub errors: Vec<String>,
-        pub relics: Relics,
-        pub eqmt: HashMap<String, EquipmentItem>,
-        pub ignored_items: HashMap<String, DucatItem>,
-    }
-
-    impl Refinement {
-        pub fn common_chance(&self) -> f32 {
-            match self {
-                Refinement::Intact => 0.2533,
-                Refinement::Exceptional => 0.2333,
-                Refinement::Flawless => 0.2,
-                Refinement::Radiant => 0.1667,
-            }
+impl Refinement {
+    pub fn common_chance(&self) -> f32 {
+        match self {
+            Refinement::Intact => 0.2533,
+            Refinement::Exceptional => 0.2333,
+            Refinement::Flawless => 0.2,
+            Refinement::Radiant => 0.1667,
         }
+    }
 
-        pub fn uncommon_chance(&self) -> f32 {
-            match self {
-                Refinement::Intact => 0.11,
-                Refinement::Exceptional => 0.13,
-                Refinement::Flawless => 0.17,
-                Refinement::Radiant => 0.20,
-            }
+    pub fn uncommon_chance(&self) -> f32 {
+        match self {
+            Refinement::Intact => 0.11,
+            Refinement::Exceptional => 0.13,
+            Refinement::Flawless => 0.17,
+            Refinement::Radiant => 0.20,
         }
+    }
 
-        pub fn rare_chance(&self) -> f32 {
-            match self {
-                Refinement::Intact => 0.02,
-                Refinement::Exceptional => 0.04,
-                Refinement::Flawless => 0.06,
-                Refinement::Radiant => 0.1,
-            }
+    pub fn rare_chance(&self) -> f32 {
+        match self {
+            Refinement::Intact => 0.02,
+            Refinement::Exceptional => 0.04,
+            Refinement::Flawless => 0.06,
+            Refinement::Radiant => 0.1,
         }
     }
 }
@@ -169,7 +157,7 @@ pub struct Items {
 }
 
 impl Items {
-    pub fn new(price_items: Vec<PriceItem>, filtered_items: FilteredItems) -> Self {
+    pub fn new(price_items: PriceItems, filtered_items: FilteredItems) -> Self {
         if price_items.is_empty() {
             return Self {
                 items: vec![],
@@ -187,7 +175,9 @@ impl Items {
         } = filtered_items;
 
         items.extend(
-            ignored_items.into_keys().map(|name| Item::new(name, None, None, true, false)),
+            ignored_items
+                .into_keys()
+                .map(|name| Item::new(name, None, None, true, false)),
         );
 
         let eqmt = eqmt
@@ -220,9 +210,7 @@ impl Items {
             max_len,
         }
     }
-}
 
-impl Items {
     pub const fn min_len(&self) -> usize {
         self.min_len
     }
@@ -259,5 +247,47 @@ impl Items {
         }
 
         current_matches.into_iter().next()
+    }
+}
+
+pub struct WfInfo {
+    client: reqwest::Client,
+}
+
+impl WfInfo {
+    pub fn new() -> crate::Result<Self> {
+        let client = reqwest::Client::builder()
+            .connect_timeout(Duration::from_secs(5))
+            .timeout(Duration::from_secs(5))
+            .build()?;
+
+        Ok(Self { client })
+    }
+
+    pub async fn fetch(&self) -> crate::Result<(PriceItems, FilteredItems)> {
+        let prices = self.fetch_prices().await?;
+        let filtered = self.fetch_filtered_items().await?;
+
+        Ok((prices, filtered))
+    }
+
+    pub async fn fetch_prices(&self) -> crate::Result<PriceItems> {
+        self.client
+            .get("https://api.warframestat.us/wfinfo/prices")
+            .send()
+            .await?
+            .json()
+            .await
+            .map_err(Into::into)
+    }
+
+    pub async fn fetch_filtered_items(&self) -> crate::Result<FilteredItems> {
+        self.client
+            .get("https://api.warframestat.us/wfinfo/filtered_items")
+            .send()
+            .await?
+            .json()
+            .await
+            .map_err(Into::into)
     }
 }
