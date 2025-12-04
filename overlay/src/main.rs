@@ -2,29 +2,31 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
 use femtovg::{Canvas, Color, Paint, Renderer};
-use overlay::backend::{Backend, OverlayBackend, get_backend};
-use overlay::{Error, OverlayAnchor, OverlayConf, OverlayInfo, OverlayMargin, OverlayRenderer};
+use overlay::backend::{OverlayMethod, OverlayBackend, get_backend};
+use overlay::{Error, OverlayAnchor, OverlayConf, OverlayTime, OverlayMargin, OverlayRenderer};
 
 struct Overlay;
 
 impl<T: Renderer> OverlayRenderer<T> for Overlay {
-    fn setup(&mut self, canvas: &mut Canvas<T>, _: &OverlayInfo) -> Result<(), Error> {
+    fn setup(&mut self, canvas: &mut Canvas<T>, _: &OverlayTime) -> Result<(), Error> {
         canvas.add_font("/usr/share/fonts/TTF/DejaVuSans.ttf")?;
         Ok(())
     }
 
-    fn draw(&mut self, canvas: &mut Canvas<T>, info: &OverlayInfo) -> Result<(), overlay::Error> {
-        let time = info.time.elapsed().as_millis();
+    fn draw(&mut self, canvas: &mut Canvas<T>, time: &OverlayTime) -> Result<(), overlay::Error> {
+        let time = time.start.elapsed().as_millis();
+        let width = canvas.width() as f32;
+        let height = canvas.height() as f32;
 
         let hue = ((time / 60) % 360) as f32 / 360.0;
         let color = Color::hsl(hue, 0.85, 0.85);
 
         let mut rect = femtovg::Path::new();
-        rect.rect(0.0, 0.0, info.width, info.height);
+        rect.rect(0.0, 0.0, width, height);
         canvas.stroke_path(&rect, &Paint::color(color).with_line_width(10.0));
 
         let mut circle = femtovg::Path::new();
-        circle.circle(info.width / 2., info.height / 2., info.height / 2.);
+        circle.circle(width / 2., height / 2., height / 2.);
         canvas.fill_path(&circle, &Paint::color(color));
 
         canvas.fill_text(
@@ -46,6 +48,7 @@ fn main() -> Result<(), overlay::Error> {
         margin: OverlayMargin::new_right(100).top(200),
         width: 1200,
         height: 200,
+        save_path: Some("test.png".into()),
         close_handle: close_handle.clone(),
     };
 
@@ -54,7 +57,7 @@ fn main() -> Result<(), overlay::Error> {
         close_handle.store(true, Ordering::SeqCst);
     });
 
-    let mut backend = get_backend(Backend::Auto).expect("Failed to initialize backend");
+    let mut backend = get_backend(OverlayMethod::Image).expect("Failed to initialize backend");
 
     backend.run(conf, Overlay)?;
 

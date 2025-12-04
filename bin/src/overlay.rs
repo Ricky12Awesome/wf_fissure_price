@@ -27,12 +27,12 @@ pub fn color_from_hsl(hsl: Hsl) -> Color {
 }
 
 impl<T: Renderer> OverlayRenderer<T> for Overlay<'_> {
-    fn setup(&mut self, canvas: &mut Canvas<T>, _: &OverlayInfo) -> Result<(), Error> {
+    fn setup(&mut self, canvas: &mut Canvas<T>, _: &OverlayTime) -> Result<(), Error> {
         canvas.add_font("/usr/share/fonts/TTF/DejaVuSans.ttf")?;
         Ok(())
     }
 
-    fn draw(&mut self, canvas: &mut Canvas<T>, info: &OverlayInfo) -> Result<(), Error> {
+    fn draw(&mut self, canvas: &mut Canvas<T>, _: &OverlayTime) -> Result<(), Error> {
         let pixel_single_reward_width = PIXEL_SINGLE_REWARD_WIDTH * self.scale;
         let fs = PIXEL_SINGLE_REWARD_WIDTH / (self.max_len as f32 / 1.75);
 
@@ -55,7 +55,7 @@ impl<T: Renderer> OverlayRenderer<T> for Overlay<'_> {
         );
 
         let mut line = femtovg::Path::new();
-        line.rect(0.0, fs * 1.2, info.width, 1. * self.scale);
+        line.rect(0.0, fs * 1.2, canvas.width() as _, 1. * self.scale);
         canvas.fill_path(&line, &secondary);
 
         // let offset_factor = 1.1666666666666667;
@@ -153,7 +153,7 @@ impl<T: Renderer> OverlayRenderer<T> for Overlay<'_> {
                 pixel_single_reward_width + (pixel_single_reward_width * i),
                 0.0,
                 1. * self.scale,
-                info.height,
+                canvas.height() as _,
             );
             canvas.fill_path(&line, &secondary);
         }

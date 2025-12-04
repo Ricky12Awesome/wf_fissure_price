@@ -1,7 +1,9 @@
+use femtovg::renderer::OpenGl;
 use femtovg::Renderer;
 
-use crate::{OverlayConf, OverlayRenderer};
+use crate::{Error, OverlayConf, OverlayRenderer};
 
+pub mod image;
 #[cfg(feature = "wayland")]
 pub mod wayland;
 
@@ -16,31 +18,55 @@ pub trait OverlayBackend {
 }
 
 #[derive(Default, Debug, Clone, Copy, Eq, PartialEq)]
-pub enum Backend {
+pub enum OverlayMethod {
     Wayland,
+    Image,
     X11,
     #[default]
     Auto,
 }
 
-pub fn get_backend(backend: Backend) -> Option<impl OverlayBackend> {
-    match backend {
+pub enum OverlayBackendImpl {
+    #[cfg(feature = "wayland")]
+    Wayland(wayland::WaylandOverlayBackend),
+    Image(image::ImageBackend),
+}
+
+impl OverlayBackend for OverlayBackendImpl {
+    type Renderer = OpenGl;
+
+    fn run(
+        &mut self,
+        conf: OverlayConf,
+        overlay: impl OverlayRenderer<Self::Renderer>,
+    ) -> Result<(), Error> {
+        match self {
+            #[cfg(feature = "wayland")]
+            OverlayBackendImpl::Wayland(wayland) => wayland.run(conf, overlay),
+            OverlayBackendImpl::Image(image) => image.run(conf, overlay),
+        }
+    }
+}
+
+pub fn get_backend(method: OverlayMethod) -> Option<OverlayBackendImpl> {
+    match method {
         #[cfg(feature = "wayland")]
-        Backend::Wayland => Some(wayland::WaylandOverlayBackend),
+        OverlayMethod::Wayland => Some(OverlayBackendImpl::Wayland(wayland::WaylandOverlayBackend)),
         #[cfg(not(feature = "wayland"))]
-        Backend::Wayland => None,
+        OverlayMethod::Wayland => None,
         #[cfg(feature = "x11")]
-        Backend::X11 => None,
+        OverlayMethod::X11 => None,
         #[cfg(not(feature = "x11"))]
-        Backend::X11 => None,
-        Backend::Auto => {
+        OverlayMethod::X11 => None,
+        OverlayMethod::Image => Some(OverlayBackendImpl::Image(image::ImageBackend)),
+        OverlayMethod::Auto => {
             let Ok(session_type) = std::env::var("XDG_SESSION_TYPE") else {
-                return get_backend(Backend::X11);
+                return get_backend(OverlayMethod::X11);
             };
 
             match session_type.as_str() {
-                "wayland" => get_backend(Backend::Wayland),
-                "x11" => get_backend(Backend::X11),
+                "wayland" => get_backend(OverlayMethod::Wayland),
+                "x11" => get_backend(OverlayMethod::X11),
                 _ => None,
             }
         }

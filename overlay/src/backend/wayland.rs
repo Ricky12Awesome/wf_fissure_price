@@ -1,6 +1,5 @@
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::time::{Duration, Instant};
 
 use femtovg::renderer::OpenGl;
 use femtovg::{Canvas, Color};
@@ -22,7 +21,7 @@ use zwlr_layer_shell_v1::{Layer, ZwlrLayerShellV1};
 use zwlr_layer_surface_v1::{Anchor, KeyboardInteractivity, ZwlrLayerSurfaceV1};
 
 use crate::backend::OverlayBackend;
-use crate::{OverlayAnchor, OverlayConf, OverlayInfo, OverlayRenderer};
+use crate::{OverlayAnchor, OverlayConf, OverlayRenderer, OverlayTime};
 
 #[derive(Error, Debug)]
 pub enum WaylandError {
@@ -49,6 +48,7 @@ pub enum WaylandError {
 }
 
 #[allow(dead_code)]
+#[derive(Default)]
 pub struct WaylandOverlayBackend;
 
 impl From<OverlayAnchor> for Anchor {
@@ -177,20 +177,11 @@ impl WaylandOverlayBackend {
 
         let mut canvas = Canvas::new(renderer)?;
 
-        let time = Instant::now();
-
-        let mut overlay_state = OverlayInfo {
-            width: conf.width as f32,
-            height: conf.height as f32,
-            time,
-            delta: Duration::from_secs(0),
-        };
+        let mut overlay_time = OverlayTime::new();
 
         canvas.set_size(conf.width, conf.height, 1.0);
 
-        let mut previous = overlay_state.time.elapsed();
-
-        overlay.setup(&mut canvas, &overlay_state)?;
+        overlay.setup(&mut canvas, &overlay_time)?;
 
         let mut state = WlState {
             close_token: conf.close_handle.clone(),
@@ -206,7 +197,7 @@ impl WaylandOverlayBackend {
                 break;
             }
 
-            overlay_state.delta = overlay_state.time.elapsed() - previous;
+            overlay_time.update_delta();
 
             canvas.clear_rect(
                 0,
@@ -216,11 +207,11 @@ impl WaylandOverlayBackend {
                 Color::rgba(0, 0, 0, 0),
             );
 
-            overlay.draw(&mut canvas, &overlay_state)?;
+            overlay.draw(&mut canvas, &overlay_time)?;
 
             canvas.flush();
 
-            previous = overlay_state.time.elapsed();
+            overlay_time.update_previous();
 
             egl::swap_buffers(egl_display, egl_surface);
         }

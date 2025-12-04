@@ -30,6 +30,7 @@ reqwest = "0.12"
 
 femtovg = "0.19"
 egl = "0.2"
+gl = "0.14.0"
 
 
 # Wayland Deps

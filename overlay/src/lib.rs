@@ -1,5 +1,6 @@
 pub mod backend;
 
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 use std::time::{Duration, Instant};
@@ -14,24 +15,49 @@ pub enum Error {
     #[error(transparent)]
     WaylandError(#[from] backend::wayland::WaylandError),
     #[error(transparent)]
+    ImageError(#[from] backend::image::ImageError),
+    #[error(transparent)]
     FemtovgError(#[from] femtovg::ErrorKind),
 }
 
 pub trait OverlayRenderer<T: Renderer> {
     #[allow(unused_variables)]
-    fn setup(&mut self, canvas: &mut Canvas<T>, info: &OverlayInfo) -> Result<(), Error> {
+    fn setup(&mut self, canvas: &mut Canvas<T>, info: &OverlayTime) -> Result<(), Error> {
         Ok(())
     }
 
-    fn draw(&mut self, canvas: &mut Canvas<T>, info: &OverlayInfo) -> Result<(), Error>;
+    fn draw(&mut self, canvas: &mut Canvas<T>, info: &OverlayTime) -> Result<(), Error>;
 }
 
 #[derive(Debug, Clone)]
-pub struct OverlayInfo {
-    pub width: f32,
-    pub height: f32,
-    pub time: Instant,
+pub struct OverlayTime {
+    pub start: Instant,
+    pub previous: Duration,
     pub delta: Duration,
+}
+
+impl Default for OverlayTime {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
+impl OverlayTime {
+    pub fn new() -> Self {
+        Self {
+            start: Instant::now(),
+            previous: Duration::default(),
+            delta: Duration::default(),
+        }
+    }
+
+    pub fn update_delta(&mut self) {
+        self.delta = self.start.elapsed() - self.previous;
+    }
+
+    pub fn update_previous(&mut self) {
+        self.previous = self.start.elapsed();
+    }
 }
 
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
@@ -71,6 +97,7 @@ pub struct OverlayConf {
     pub margin: OverlayMargin,
     pub width: u32,
     pub height: u32,
+    pub save_path: Option<PathBuf>,
     pub close_handle: Arc<AtomicBool>,
 }
 

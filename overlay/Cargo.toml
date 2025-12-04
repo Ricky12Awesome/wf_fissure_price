@@ -6,6 +6,8 @@ edition = "2024"
 [dependencies]
 femtovg = { workspace = true }
 egl = { workspace = true }
+gl = { workspace = true }
+image = { workspace = true }
 thiserror = { workspace = true }
 log = { workspace = true }
 

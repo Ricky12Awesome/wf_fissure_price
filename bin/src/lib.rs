@@ -2,6 +2,7 @@ pub mod geometry;
 pub mod overlay;
 mod util;
 
+use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::AtomicBool;
 
@@ -11,7 +12,7 @@ use lib::ocr::reward_image_to_items;
 use lib::util::{PIXEL_MARGIN_TOP, PIXEL_REWARD_HEIGHT, PIXEL_SINGLE_REWARD_WIDTH, get_scale};
 use lib::wfinfo::{Items, load_from_reader};
 use log::debug;
-use overlay::backend::{Backend, OverlayBackend, get_backend};
+use overlay::backend::{OverlayBackend, OverlayMethod, get_backend};
 use overlay::{OverlayAnchor, OverlayConf, OverlayMargin};
 
 use crate::geometry::GeometryMethod;
@@ -266,25 +267,18 @@ pub async fn take_screenshot(method: GeometryMethod) -> anyhow::Result<DynamicIm
     Ok(image)
 }
 
-pub async fn activate(image: DynamicImage, settings: &ShowOverlaySettings) -> anyhow::Result<()> {
+pub async fn extract_reward_image(
+    image: DynamicImage,
+    items: &Items,
+) -> anyhow::Result<Option<Overlay<'_>>> {
     let scale = get_scale(&image)?;
-    let (items, theme) = reward_image_to_items(&settings.items, image)?;
-
-    // println!("{}", serde_json::to_string(&items)?);
-
-    // testing
-    // let theme = DEFAULT_THEMES.by_name("Vitruvian").unwrap();
-    // let items: Vec<PriceItem> = serde_json::from_str(
-    //     r#"[{"name":"Octavia Prime Systems","yesterday_vol":113,"today_vol":114,"custom_avg":8.1},{"name":"Octavia Prime Blueprint","yesterday_vol":176,"today_vol":189,"custom_avg":20.4},{"name":"Tenora Prime Blueprint","yesterday_vol":7,"today_vol":20,"custom_avg":3.8},{"name":"Harrow Prime Systems","yesterday_vol":97,"today_vol":119,"custom_avg":29.6}]"#,
-    // )?;
-    // let scale = 2.0;
+    let (items, theme) = reward_image_to_items(items, image)?;
 
     if items.is_empty() {
-        return Ok(());
+        return Ok(None);
     }
 
     let max_len = items.iter().map(|item| item.name.len()).max().unwrap();
-
     let highest = items
         .iter()
         .max_by_key(|item| item.platinum.unwrap_or_default().floor() as u32)
@@ -298,6 +292,22 @@ pub async fn activate(image: DynamicImage, settings: &ShowOverlaySettings) -> an
         theme,
     };
 
+    Ok(Some(overlay))
+}
+
+pub async fn activate_overlay(
+    image: DynamicImage,
+    settings: &ShowOverlaySettings,
+) -> anyhow::Result<()> {
+    let Some(overlay) = extract_reward_image(image, &settings.items).await? else {
+        return Ok(());
+    };
+
+    let overlay = Overlay {
+        scale: settings.scale.unwrap_or(overlay.scale),
+        ..overlay
+    };
+
     show_overlay(overlay, settings)
 }
 
@@ -309,7 +319,8 @@ pub struct ShowOverlaySettings {
     pub scale: Option<f32>,
     pub scale_margin: bool,
     pub close_handle: Arc<AtomicBool>,
-    pub backend: Backend,
+    pub method: OverlayMethod,
+    pub save_path: Option<PathBuf>,
 }
 
 impl Default for ShowOverlaySettings {
@@ -321,7 +332,8 @@ impl Default for ShowOverlaySettings {
             scale_margin: true,
             scale: None,
             close_handle: Arc::new(AtomicBool::new(false)),
-            backend: Backend::Auto,
+            method: OverlayMethod::Auto,
+            save_path: None,
         }
     }
 }
@@ -339,11 +351,17 @@ fn show_overlay(overlay: Overlay, settings: &ShowOverlaySettings) -> anyhow::Res
         height: ((PIXEL_REWARD_HEIGHT / 2.0) * scale) as u32,
         anchor: settings.anchor,
         margin,
+        save_path: settings.save_path.clone(),
         close_handle: settings.close_handle.clone(),
     };
 
-    let mut backend =
-        get_backend(settings.backend).ok_or_else(|| anyhow::anyhow!("Backend not found"))?;
+    let method = if settings.save_path.is_some() {
+        OverlayMethod::Image
+    } else {
+        settings.method
+    };
+
+    let mut backend = get_backend(method).ok_or_else(|| anyhow::anyhow!("Backend not found"))?;
 
     backend.run(conf, overlay)?;
 

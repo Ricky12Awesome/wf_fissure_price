@@ -2,7 +2,7 @@ use std::path::PathBuf;
 use std::sync::Arc;
 
 use bin::geometry::{Geometry, GeometryMethod};
-use bin::overlay::backend::Backend;
+use bin::overlay::backend::OverlayMethod;
 use bin::overlay::{OverlayAnchor, OverlayMargin};
 use bin::{ShortcutSettings, ShowOverlaySettings, take_screenshot};
 use clap::{CommandFactory, Parser, ValueEnum};
@@ -15,7 +15,7 @@ pub enum ArgShortcutMethod {
     X11,
 }
 
-#[derive(ValueEnum, Debug, Clone, Copy)]
+#[derive(ValueEnum, Debug, Clone)]
 pub enum ArgOverlayMethod {
     Wayland,
     X11,
@@ -45,12 +45,12 @@ enum ArgGeometryMethod {
     Auto,
 }
 
-impl From<ArgOverlayMethod> for Backend {
+impl From<ArgOverlayMethod> for OverlayMethod {
     fn from(value: ArgOverlayMethod) -> Self {
         match value {
-            ArgOverlayMethod::Wayland => Self::Wayland,
-            ArgOverlayMethod::X11 => Self::X11,
-            ArgOverlayMethod::Auto => Self::Auto,
+            ArgOverlayMethod::Wayland => OverlayMethod::Wayland,
+            ArgOverlayMethod::X11 => OverlayMethod::X11,
+            ArgOverlayMethod::Auto => OverlayMethod::Auto,
         }
     }
 }
@@ -260,6 +260,11 @@ struct Args {
     ///
     /// https://api.warframestat.us/wfinfo/filtered_items
     filtered_items: PathBuf,
+    #[clap(long, short = 'O', visible_alias = "out")]
+    /// If set, instead of showing overlay on screen, save it as image to this path
+    ///
+    /// [ignores: --overlay_anchor, --overlay_margin, --overlay_method]
+    output: Option<PathBuf>,
 }
 
 impl Args {
@@ -330,16 +335,6 @@ impl Args {
 }
 
 async fn activate(items: Arc<Items>, args: &Args) -> anyhow::Result<()> {
-    let settings = ShowOverlaySettings {
-        items,
-        anchor: args.overlay_anchor.into(),
-        margin: args.get_overlay_margin(),
-        scale: args.overlay_scale,
-        scale_margin: args.overlay_scale_margin,
-        close_handle: Default::default(),
-        backend: args.overlay_method.into(),
-    };
-
     let geometry_method = args.get_geometry_method();
 
     let image = match &args.image {
@@ -347,7 +342,18 @@ async fn activate(items: Arc<Items>, args: &Args) -> anyhow::Result<()> {
         Some(image) => image::open(image)?,
     };
 
-    bin::activate(image, &settings).await?;
+    let settings = ShowOverlaySettings {
+        items,
+        anchor: args.overlay_anchor.into(),
+        margin: args.get_overlay_margin(),
+        scale: args.overlay_scale,
+        scale_margin: args.overlay_scale_margin,
+        close_handle: Default::default(),
+        method: args.overlay_method.clone().into(),
+        save_path: args.output.clone(),
+    };
+
+    bin::activate_overlay(image, &settings).await?;
 
     Ok(())
 }
