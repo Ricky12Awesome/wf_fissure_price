@@ -228,6 +228,7 @@ impl WaylandOverlayBackend {
         );
         egl::destroy_context(egl_display, egl_context);
         egl::destroy_surface(egl_display, egl_surface);
+        egl::terminate(egl_display);
 
         layer_surface.destroy();
         drop(wl_egl_surface);

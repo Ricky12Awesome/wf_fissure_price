@@ -1,14 +1,16 @@
 use std::path::PathBuf;
 use std::sync::Arc;
+use std::sync::atomic::{AtomicBool, Ordering};
 
 use bin::cache::get_items;
 use bin::geometry::{Geometry, GeometryMethod};
 use bin::overlay::backend::OverlayMethod;
 use bin::overlay::{OverlayAnchor, OverlayMargin};
+use bin::watcher::{get_default_ee_log_path, log_watcher};
 use bin::{ShortcutSettings, ShowOverlaySettings, take_screenshot};
 use clap::{CommandFactory, Parser, ValueEnum};
 use lib::wfinfo::Items;
-use log::error;
+use log::{debug, error};
 
 #[derive(ValueEnum, Debug, Clone, Copy)]
 pub enum ArgShortcutMethod {
@@ -108,7 +110,7 @@ pub const STYLE: clap::builder::Styles = clap::builder::Styles::styled()
         anstyle::Style::new().fg_color(Some(anstyle::Color::Ansi(anstyle::AnsiColor::White))),
     );
 
-#[derive(Parser)]
+#[derive(Parser, Clone)]
 #[clap(author, version, about, long_about = None)]
 #[command(styles = STYLE)]
 struct Args {
@@ -120,6 +122,7 @@ struct Args {
         default_value = "Home"
     )]
     /// Shortcut to listen too, this might be ignored on wayland environments
+    ///
     /// depending on how GlobalShortcuts is implemented
     shortcut: String,
     #[clap(
@@ -150,6 +153,7 @@ struct Args {
         default_value = "auto"
     )]
     /// Overlay method to use, auto depends on XDG_SESSION_TYPE
+    ///
     /// only wayland is implemented
     overlay_method: ArgOverlayMethod,
     #[clap(
@@ -159,7 +163,7 @@ struct Args {
         group = "overlay_group",
         default_value = "top-center"
     )]
-    /// Where overlay is anchored to the screen,
+    /// Where overlay is anchored to the screen
     /// since global positioning isn't in wayland
     overlay_anchor: ArgOverlayAnchor,
     #[clap(
@@ -171,7 +175,7 @@ struct Args {
     )]
     /// Overlay margin from anchor
     ///
-    /// if --overlay_scale_margin is set, values need to be based on 1080p pixel values
+    /// if --overlay-scale-margin is set, values need to be based on 1080p pixel values
     ///
     /// [format: top,right,bottom,left]
     overlay_margin: Vec<i32>,
@@ -183,6 +187,7 @@ struct Args {
         default_value = "true"
     )]
     /// if true, will scale margin values,
+    ///
     /// margin values will need to be based on 1080p pixel values
     ///
     /// [default: true]
@@ -239,7 +244,7 @@ struct Args {
     ///
     /// [default: false]
     now: bool,
-    #[clap(long, short = 'i', requires = "now")]
+    #[clap(long, short = 'i')]
     /// Path to an image to be used like a screenshot of the rewards screen
     ///
     /// this ignores geometry options
@@ -257,9 +262,9 @@ struct Args {
     /// https://api.warframestat.us/wfinfo/filtered_items
     filtered_items: Option<PathBuf>,
     #[clap(long, short = 'O', visible_alias = "out")]
-    /// If set, instead of showing overlay on screen, save it as image to this path
+    /// If set, instead of showing overlay on screen, save it as image
     ///
-    /// [ignores: --overlay_anchor, --overlay_margin, --overlay_method]
+    /// ignores some overlay options
     output: Option<PathBuf>,
 }
 
@@ -330,7 +335,12 @@ impl Args {
     }
 }
 
-async fn activate(items: Arc<Items>, args: &Args) -> anyhow::Result<()> {
+async fn activate(
+    items: Arc<Items>,
+    close_handle: Arc<AtomicBool>,
+    active_handle: Arc<AtomicBool>,
+    args: &Args,
+) -> anyhow::Result<()> {
     let geometry_method = args.get_geometry_method();
 
     let image = match &args.image {
@@ -344,58 +354,113 @@ async fn activate(items: Arc<Items>, args: &Args) -> anyhow::Result<()> {
         margin: args.get_overlay_margin(),
         scale: args.overlay_scale,
         scale_margin: args.overlay_scale_margin,
-        close_handle: Default::default(),
+        close_handle,
         method: args.overlay_method.clone().into(),
         save_path: args.output.clone(),
     };
 
-    bin::activate_overlay(image, &settings).await?;
+    if !active_handle.load(Ordering::SeqCst) {
+        active_handle.store(true, Ordering::SeqCst);
+        bin::activate_overlay(image, &settings).await?;
+        active_handle.store(false, Ordering::SeqCst);
+    }
 
     Ok(())
 }
 
-async fn run_program(args: &Args) -> anyhow::Result<()> {
+async fn run_program(args: Args) -> anyhow::Result<()> {
     let items = get_items(args.prices.clone(), args.filtered_items.clone()).await?;
-
-    // // https://api.warframestat.us/wfinfo/prices
-    // let prices = std::fs::File::open(&args.prices)?;
-    // let prices = load_from_reader(prices)?;
-    //
-    // // https://api.warframestat.us/wfinfo/filtered_items
-    // let filtered_items = std::fs::File::open(&args.filtered_items)?;
-    // let filtered_items = load_from_reader(filtered_items)?;
-
-    // let items = Items::new(prices, filtered_items);
-
     let items = Arc::new(items);
+    let close_handle = Arc::new(AtomicBool::new(false));
+    let active_handle = Arc::new(AtomicBool::new(false));
 
     if args.now {
-        activate(items, args).await?;
+        activate(items, close_handle, active_handle, &args).await?;
 
         return Ok(());
     }
 
-    let settings = ShortcutSettings {
-        id: &args.shortcut_id,
-        preferred_trigger: &args.shortcut,
+    let args = Arc::new(args);
+    let shortcut_args = args.clone();
+
+    let callback_items = items.clone();
+    let callback_close_handle = close_handle.clone();
+    let callback_active_handle = active_handle.clone();
+
+    let callback = move || {
+        let args = args.clone();
+        let items = callback_items.clone();
+        let close_handle = callback_close_handle.clone();
+        let active_handle = callback_active_handle.clone();
+
+        debug!("Attempting to activate");
+
+        if active_handle.load(Ordering::SeqCst) {
+            debug!("Already active, closing overlay");
+            close_handle.store(true, Ordering::SeqCst);
+            return;
+        }
+
+        std::thread::spawn(move || {
+            debug!("Activating overlay");
+            let rt = tokio::runtime::Runtime::new().unwrap();
+            let result = rt.block_on(activate(
+                items,
+                close_handle.clone(),
+                active_handle.clone(),
+                &args,
+            ));
+
+            if let Err(err) = result {
+                active_handle.store(false, Ordering::SeqCst);
+                close_handle.store(true, Ordering::SeqCst);
+                error!("{err}");
+            }
+        });
     };
 
-    let callback = async move || {
-        if let Err(err) = activate(items.clone(), args).await {
-            error!("{err}");
-        }
+    let shortcut_callback = callback.clone();
+    let shortcut = std::thread::spawn(move || {
+        let rt = tokio::runtime::Runtime::new().unwrap();
 
-        Ok(())
-    };
+        let settings = ShortcutSettings {
+            id: &shortcut_args.shortcut_id,
+            preferred_trigger: &shortcut_args.shortcut,
+        };
 
-    match args.shortcut_method {
-        ArgShortcutMethod::Portal => {
-            bin::portal_shortcut(settings, callback).await?;
+        match shortcut_args.shortcut_method {
+            ArgShortcutMethod::Portal => {
+                rt.block_on(bin::portal_shortcut(settings, shortcut_callback)) //
+            }
+            ArgShortcutMethod::X11 => {
+                rt.block_on(bin::x11_shortcut(settings, shortcut_callback)) //
+            }
         }
-        ArgShortcutMethod::X11 => {
-            bin::x11_shortcut(settings, callback).await?;
-        }
-    }
+    });
+
+    let watcher_callback = callback;
+    let watcher = std::thread::spawn(move || {
+        let file = get_default_ee_log_path();
+
+        log_watcher(
+            file,
+            || {
+                if active_handle.load(Ordering::SeqCst) {
+                    close_handle.store(true, Ordering::SeqCst);
+                }
+
+                std::thread::sleep(std::time::Duration::from_millis(1500));
+
+                watcher_callback();
+            },
+            || {
+                close_handle.store(true, Ordering::SeqCst);
+            },
+        )
+    });
+
+    shortcut.join().unwrap()?;
+    watcher.join().unwrap()?;
 
     Ok(())
 }
@@ -405,7 +470,7 @@ async fn main() {
     env_logger::init();
     let args = Args::parse().validate();
 
-    let Err(err) = run_program(&args).await else {
+    let Err(err) = run_program(args).await else {
         return;
     };
 

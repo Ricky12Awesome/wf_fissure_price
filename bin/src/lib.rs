@@ -2,6 +2,7 @@ pub mod geometry;
 pub mod overlay;
 mod util;
 pub mod cache;
+pub mod watcher;
 
 use std::path::PathBuf;
 use std::sync::Arc;
@@ -133,7 +134,7 @@ pub fn x11_shortcut_parser(
 
 pub async fn x11_shortcut(
     settings: ShortcutSettings<'_>,
-    callback: impl AsyncFn() -> anyhow::Result<()>,
+    callback: impl Fn(),
 ) -> anyhow::Result<()> {
     use x11rb::connection::Connection;
     use x11rb::protocol::xproto::*;
@@ -173,14 +174,14 @@ pub async fn x11_shortcut(
         let event = conn.wait_for_event()?;
 
         if let x11rb::protocol::Event::KeyPress(_) = event {
-            callback().await?;
+            callback();
         }
     }
 }
 
 pub async fn portal_shortcut(
     settings: ShortcutSettings<'_>,
-    callback: impl AsyncFn() -> anyhow::Result<()>,
+    callback: impl Fn(),
 ) -> anyhow::Result<()> {
     use ashpd::desktop::global_shortcuts::{GlobalShortcuts, NewShortcut};
     use tokio_stream::StreamExt;
@@ -209,13 +210,8 @@ pub async fn portal_shortcut(
 
     let mut activated = portal.receive_activated().await?;
 
-    // workaround, for whatever reason idky IDE (RustRover) gives false-positive error
-    // "Value used after being moved [E0382]"
-    // even though programs run just fine without it
-    let callback = &callback;
-
     while activated.next().await.is_some() {
-        callback().await?;
+        callback();
     }
 
     Ok(())

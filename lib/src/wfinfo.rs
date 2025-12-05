@@ -243,7 +243,12 @@ impl Items {
 
             let best_matched_token = best_match.tokens[i].clone();
 
-            current_matches.retain(|item| item.tokens[i] == best_matched_token);
+            current_matches.retain(|item| {
+                item.tokens
+                    .get(i)
+                    .filter(|t| **t == best_matched_token)
+                    .is_some()
+            });
         }
 
         current_matches.into_iter().next()
