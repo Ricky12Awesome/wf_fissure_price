@@ -18,6 +18,7 @@ pub trait OverlayBackend {
 }
 
 #[derive(Default, Debug, Clone, Copy, Eq, PartialEq)]
+#[cfg_attr(feature = "clap", derive(clap::ValueEnum))]
 pub enum OverlayMethod {
     Wayland,
     Image,

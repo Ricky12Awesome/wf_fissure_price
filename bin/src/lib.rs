@@ -1,7 +1,7 @@
+pub mod cache;
 pub mod geometry;
 pub mod overlay;
 mod util;
-pub mod cache;
 pub mod watcher;
 
 use std::path::PathBuf;
@@ -10,6 +10,7 @@ use std::sync::atomic::AtomicBool;
 
 use image::DynamicImage;
 use lib::ocr::reward_image_to_items;
+use lib::theme::Theme;
 use lib::util::{PIXEL_MARGIN_TOP, PIXEL_REWARD_HEIGHT, PIXEL_SINGLE_REWARD_WIDTH, get_scale};
 use lib::wfinfo::Items;
 use log::debug;
@@ -33,10 +34,6 @@ impl Default for ShortcutSettings<'_> {
         }
     }
 }
-
-#[cfg(test)]
-#[test]
-fn test1() {}
 
 #[derive(Debug, Copy, Clone, Eq, PartialEq, Ord, PartialOrd)]
 pub enum X11Key {
@@ -236,12 +233,13 @@ pub async fn take_screenshot(method: GeometryMethod) -> anyhow::Result<DynamicIm
     Ok(image)
 }
 
-pub async fn extract_reward_image(
+pub async fn extract_reward_image<'a>(
     image: DynamicImage,
     items: &Items,
-) -> anyhow::Result<Option<Overlay<'_>>> {
+    theme: Option<&'a Theme>,
+) -> anyhow::Result<Option<Overlay<'a>>> {
     let scale = get_scale(&image)?;
-    let (items, theme) = reward_image_to_items(items, image)?;
+    let (items, theme) = reward_image_to_items(items, image, theme)?;
 
     if items.is_empty() {
         return Ok(None);
@@ -268,12 +266,15 @@ pub async fn activate_overlay(
     image: DynamicImage,
     settings: &ShowOverlaySettings,
 ) -> anyhow::Result<()> {
-    let Some(overlay) = extract_reward_image(image, &settings.items).await? else {
+    let Some(overlay) =
+        extract_reward_image(image, &settings.items, settings.detection_theme.as_ref()).await?
+    else {
         return Ok(());
     };
 
     let overlay = Overlay {
         scale: settings.scale.unwrap_or(overlay.scale),
+        theme: settings.overlay_theme.as_ref().unwrap_or(overlay.theme),
         ..overlay
     };
 
@@ -290,6 +291,8 @@ pub struct ShowOverlaySettings {
     pub close_handle: Arc<AtomicBool>,
     pub method: OverlayMethod,
     pub save_path: Option<PathBuf>,
+    pub detection_theme: Option<Theme>,
+    pub overlay_theme: Option<Theme>,
 }
 
 impl Default for ShowOverlaySettings {
@@ -303,6 +306,8 @@ impl Default for ShowOverlaySettings {
             close_handle: Arc::new(AtomicBool::new(false)),
             method: OverlayMethod::Auto,
             save_path: None,
+            detection_theme: None,
+            overlay_theme: None,
         }
     }
 }

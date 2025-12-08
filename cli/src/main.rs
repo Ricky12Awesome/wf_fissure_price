@@ -1,3 +1,4 @@
+use std::ops::Deref;
 use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -8,7 +9,10 @@ use bin::overlay::backend::OverlayMethod;
 use bin::overlay::{OverlayAnchor, OverlayMargin};
 use bin::watcher::{get_default_ee_log_path, log_watcher};
 use bin::{ShortcutSettings, ShowOverlaySettings, take_screenshot};
+use clap::builder::PossibleValue;
 use clap::{CommandFactory, Parser, ValueEnum};
+use lib::theme::{DEFAULT_THEMES, DefaultThemes, auto_theme};
+use lib::util::get_scale;
 use lib::wfinfo::Items;
 use log::{debug, error};
 
@@ -25,17 +29,48 @@ pub enum ArgOverlayMethod {
     Auto,
 }
 
-#[derive(ValueEnum, Debug, Clone, Copy)]
-enum ArgOverlayAnchor {
-    TopLeft,
-    TopCenter,
-    TopRight,
-    CenterLeft,
-    Center,
-    CenterRight,
-    BottomLeft,
-    BottomCenter,
-    BottomRight,
+#[derive(Default, Debug, Copy, Clone)]
+pub enum ArgDetectionMethod {
+    #[default]
+    Auto,
+    Overlay,
+    Custom(DefaultThemes),
+}
+
+impl ValueEnum for ArgDetectionMethod {
+    fn value_variants<'a>() -> &'a [Self] {
+        &[
+            Self::Auto,
+            Self::Overlay,
+            Self::Custom(DefaultThemes::Baruuk),
+            Self::Custom(DefaultThemes::Conquera),
+            Self::Custom(DefaultThemes::Corpus),
+            Self::Custom(DefaultThemes::DarkLotus),
+            Self::Custom(DefaultThemes::Deadlock),
+            Self::Custom(DefaultThemes::Equinox),
+            Self::Custom(DefaultThemes::Fortuna),
+            Self::Custom(DefaultThemes::Grineer),
+            Self::Custom(DefaultThemes::HighContrast),
+            Self::Custom(DefaultThemes::Legacy),
+            Self::Custom(DefaultThemes::Lotus),
+            Self::Custom(DefaultThemes::LunarRenewal),
+            Self::Custom(DefaultThemes::Nidus),
+            Self::Custom(DefaultThemes::Orokin),
+            Self::Custom(DefaultThemes::Pom2),
+            Self::Custom(DefaultThemes::Stalker),
+            Self::Custom(DefaultThemes::Tenno),
+            Self::Custom(DefaultThemes::Vitruvian),
+            Self::Custom(DefaultThemes::ZephyrHarrier),
+        ]
+    }
+
+    fn to_possible_value(&self) -> Option<PossibleValue> {
+        match self {
+            ArgDetectionMethod::Auto => Some(PossibleValue::new("auto")),
+            ArgDetectionMethod::Overlay => Some(PossibleValue::new("overlay")),
+            ArgDetectionMethod::Custom(theme) => theme.to_possible_value()
+        }
+    }
 }
 
 #[derive(ValueEnum, Debug, Clone, Copy)]
@@ -54,22 +89,6 @@ impl From<ArgOverlayMethod> for OverlayMethod {
             ArgOverlayMethod::Wayland => OverlayMethod::Wayland,
             ArgOverlayMethod::X11 => OverlayMethod::X11,
             ArgOverlayMethod::Auto => OverlayMethod::Auto,
-        }
-    }
-}
-
-impl From<ArgOverlayAnchor> for OverlayAnchor {
-    fn from(value: ArgOverlayAnchor) -> Self {
-        match value {
-            ArgOverlayAnchor::TopLeft => Self::TopLeft,
-            ArgOverlayAnchor::TopCenter => Self::TopCenter,
-            ArgOverlayAnchor::TopRight => Self::TopRight,
-            ArgOverlayAnchor::CenterLeft => Self::CenterLeft,
-            ArgOverlayAnchor::Center => Self::Center,
-            ArgOverlayAnchor::CenterRight => Self::CenterRight,
-            ArgOverlayAnchor::BottomLeft => Self::BottomLeft,
-            ArgOverlayAnchor::BottomCenter => Self::BottomCenter,
-            ArgOverlayAnchor::BottomRight => Self::BottomRight,
         }
     }
 }
@@ -165,7 +184,7 @@ struct Args {
     )]
     /// Where overlay is anchored to the screen
     /// since global positioning isn't in wayland
-    overlay_anchor: ArgOverlayAnchor,
+    overlay_anchor: OverlayAnchor,
     #[clap(
         long,
         group = "overlay_group",
@@ -197,6 +216,9 @@ struct Args {
     ///
     /// [default: height / 1080]
     overlay_scale: Option<f32>,
+    #[clap(long, short = 't', visible_alias = "ot", group = "overlay_group")]
+    /// If set, will override the theme the overlay uses
+    overlay_theme: Option<DefaultThemes>,
     #[clap(
         long,
         short = 'g',
@@ -239,6 +261,12 @@ struct Args {
     ///
     /// [conflicts: --geometry, --geometry-command]
     geometry: Option<Vec<u32>>,
+    #[clap(long, short = 'd', default_value = "auto")]
+    /// auto: use colors found in the image,
+    /// should be used in HDR mode since HDR messes with colors
+    ///
+    /// overlay: use --overlay-theme
+    detection_method: ArgDetectionMethod,
     #[clap(long, short = 'n', default_value = "false")]
     /// Activates immanently skipping the need for a shortcut
     ///
@@ -348,15 +376,31 @@ async fn activate(
         Some(image) => image::open(image)?,
     };
 
+    let scale = get_scale(&image)?;
+
+    let overlay_theme = args
+        .overlay_theme
+        .map(|t| t.into())
+        .or_else(|| DEFAULT_THEMES.detect_theme(&image, scale))
+        .cloned();
+
+    let detection_theme = match args.detection_method {
+        ArgDetectionMethod::Auto => Some(auto_theme("auto", &image)?),
+        ArgDetectionMethod::Overlay => overlay_theme.clone(),
+        ArgDetectionMethod::Custom(theme) => Some(theme.deref().clone())
+    };
+
     let settings = ShowOverlaySettings {
         items,
-        anchor: args.overlay_anchor.into(),
+        anchor: args.overlay_anchor,
         margin: args.get_overlay_margin(),
         scale: args.overlay_scale,
         scale_margin: args.overlay_scale_margin,
         close_handle,
         method: args.overlay_method.clone().into(),
         save_path: args.output.clone(),
+        detection_theme,
+        overlay_theme,
     };
 
     if !active_handle.load(Ordering::SeqCst) {

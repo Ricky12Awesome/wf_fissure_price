@@ -8,8 +8,8 @@ name = "wffp-cli"
 path = "src/main.rs"
 
 [dependencies]
-lib = { path = "../lib" }
-bin = { path = "../bin" }
+lib = { path = "../lib", features = ["clap"] }
+bin = { path = "../bin", features = ["clap"] }
 
 image = { workspace = true }
 log = { workspace = true }
@@ -18,4 +18,3 @@ anyhow = { workspace = true }
 env_logger = { workspace = true }
 clap = { workspace = true }
 anstyle = { workspace = true }
-reqwest = { workspace = true }

@@ -483,7 +483,6 @@ dependencies = [
  "image",
  "lib",
  "log",
- "reqwest",
  "tokio",
 ]
 
@@ -1607,8 +1606,8 @@ checksum = "db13adb97ab515a3691f56e4dbab09283d0b86cb45abd991d8634a9d6f501760"
 name = "lib"
 version = "0.1.0"
 dependencies = [
+ "clap",
  "image",
- "lazy_static",
  "levenshtein",
  "log",
  "palette",
@@ -2015,6 +2014,7 @@ dependencies = [
 name = "overlay"
 version = "0.1.0"
 dependencies = [
+ "clap",
  "egl",
  "femtovg",
  "gl",

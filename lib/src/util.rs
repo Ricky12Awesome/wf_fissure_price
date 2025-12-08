@@ -2,14 +2,13 @@ use image::{DynamicImage, Rgb};
 
 pub const PIXEL_BASE_RESOLUTION: f32 = 1080.0;
 pub const PIXEL_REWARD_WIDTH: f32 = 960.0;
-// pub const PIXEL_REWARD_WIDTH: f32 = 1920.0;
 pub const PIXEL_SINGLE_REWARD_WIDTH: f32 = PIXEL_REWARD_WIDTH / 4.0;
 pub const PIXEL_REWARD_HEIGHT: f32 = 240.0;
-// pub const PIXEL_REWARD_HEIGHT: f32 = 480.0;
 pub const PIXEL_REWARD_Y: f32 = 220.0;
-// pub const PIXEL_REWARD_Y: f32 = 440.0;
 pub const PIXEL_REWARD_LINE_HEIGHT: f32 = 48.0;
-// pub const PIXEL_REWARD_LINE_HEIGHT: f32 = 96.0;
+
+pub const PIXEL_PROFILE_LINE_X: f32 = 105.0;
+pub const PIXEL_PROFILE_LINE_Y: f32 = 85.0;
 
 pub const PIXEL_MARGIN_TOP: f32 = PIXEL_REWARD_Y + (PIXEL_REWARD_HEIGHT * 1.6666667);
 

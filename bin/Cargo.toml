@@ -22,3 +22,6 @@ ashpd = { workspace = true }
 x11rb = { workspace = true }
 #xcap = { workspace = true}
 xkbcommon = { workspace = true }
+
+[features]
+clap = ["overlay/clap", "lib/clap"]

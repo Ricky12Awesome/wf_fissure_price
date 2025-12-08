@@ -47,6 +47,7 @@ pub fn filter_and_separate_parts_from_part_box(
 ) -> Vec<DynamicImage> {
     let (filtered, (total_even, total_odd)) = theme.filter(image);
 
+    #[cfg(debug_assertions)]
     filtered
         .save("test-images/other/filtered.png")
         .expect("Failed to write filtered image");
@@ -98,6 +99,7 @@ pub fn filter_and_separate_parts_from_part_box(
             }
         }
 
+        #[cfg(debug_assertions)]
         cropped
             .save(format!("part-{}.png", i))
             .expect("Failed to write image");
@@ -164,8 +166,9 @@ pub fn reward_image_to_reward_names<'a>(
 pub fn reward_image_to_items<'a>(
     items: &Items,
     image: DynamicImage,
+    theme: Option<&'a Theme>,
 ) -> crate::Result<(Vec<Item>, &'a Theme)> {
-    let (text, theme) = reward_image_to_reward_names(image, None, None)?;
+    let (text, theme) = reward_image_to_reward_names(image, None, theme)?;
 
     let mut result = vec![];
     for item_og in text {

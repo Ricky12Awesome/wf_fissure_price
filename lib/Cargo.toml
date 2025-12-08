@@ -5,7 +5,6 @@ edition = "2024"
 
 [dependencies]
 # Library
-lazy_static = { workspace = true }
 thiserror = { workspace = true }
 image = { workspace = true }
 tesseract = { workspace = true }
@@ -17,3 +16,5 @@ levenshtein = { workspace = true }
 serde_json = { workspace = true }
 serde-aux = { workspace = true }
 reqwest = { workspace = true }
+
+clap = { workspace = true, optional = true }

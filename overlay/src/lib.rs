@@ -61,9 +61,10 @@ impl OverlayTime {
 }
 
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "clap", derive(clap::ValueEnum))]
 pub enum OverlayAnchor {
-    #[default]
     TopLeft,
+    #[default]
     TopCenter,
     TopRight,
     CenterLeft,
