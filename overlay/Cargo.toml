@@ -12,6 +12,7 @@ thiserror = { workspace = true }
 log = { workspace = true }
 
 clap = { workspace = true, optional = true }
+serde = { workspace = true, optional = true }
 
 # Wayland Deps
 wayland-client = { workspace = true, optional = true }

@@ -1,367 +1,15 @@
 use std::ops::Deref;
-use std::path::PathBuf;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
 
+use bin::args::{ArgDetectionMethod, ArgShortcutMethod, Args};
 use bin::cache::get_items;
-use bin::geometry::{Geometry, GeometryMethod};
-use bin::overlay::backend::OverlayMethod;
-use bin::overlay::{OverlayAnchor, OverlayMargin};
 use bin::watcher::{get_default_ee_log_path, log_watcher};
 use bin::{ShortcutSettings, ShowOverlaySettings, take_screenshot};
-use clap::builder::PossibleValue;
-use clap::{CommandFactory, Parser, ValueEnum};
-use lib::theme::{DEFAULT_THEMES, DefaultThemes, auto_theme};
+use lib::theme::{DEFAULT_THEMES, auto_theme};
 use lib::util::get_scale;
 use lib::wfinfo::Items;
 use log::{debug, error};
-
-#[derive(ValueEnum, Debug, Clone, Copy)]
-pub enum ArgShortcutMethod {
-    Portal,
-    X11,
-}
-
-#[derive(ValueEnum, Debug, Clone)]
-pub enum ArgOverlayMethod {
-    Wayland,
-    X11,
-    Auto,
-}
-
-#[derive(Default, Debug, Copy, Clone)]
-pub enum ArgDetectionMethod {
-    #[default]
-    Auto,
-    Overlay,
-    Custom(DefaultThemes),
-}
-
-impl ValueEnum for ArgDetectionMethod {
-    fn value_variants<'a>() -> &'a [Self] {
-        &[
-            Self::Auto,
-            Self::Overlay,
-            Self::Custom(DefaultThemes::Baruuk),
-            Self::Custom(DefaultThemes::Conquera),
-            Self::Custom(DefaultThemes::Corpus),
-            Self::Custom(DefaultThemes::DarkLotus),
-            Self::Custom(DefaultThemes::Deadlock),
-            Self::Custom(DefaultThemes::Equinox),
-            Self::Custom(DefaultThemes::Fortuna),
-            Self::Custom(DefaultThemes::Grineer),
-            Self::Custom(DefaultThemes::HighContrast),
-            Self::Custom(DefaultThemes::Legacy),
-            Self::Custom(DefaultThemes::Lotus),
-            Self::Custom(DefaultThemes::LunarRenewal),
-            Self::Custom(DefaultThemes::Nidus),
-            Self::Custom(DefaultThemes::Orokin),
-            Self::Custom(DefaultThemes::Pom2),
-            Self::Custom(DefaultThemes::Stalker),
-            Self::Custom(DefaultThemes::Tenno),
-            Self::Custom(DefaultThemes::Vitruvian),
-            Self::Custom(DefaultThemes::ZephyrHarrier),
-        ]
-    }
-
-    fn to_possible_value(&self) -> Option<PossibleValue> {
-        match self {
-            ArgDetectionMethod::Auto => Some(PossibleValue::new("auto")),
-            ArgDetectionMethod::Overlay => Some(PossibleValue::new("overlay")),
-            ArgDetectionMethod::Custom(theme) => theme.to_possible_value()
-        }
-    }
-}
-
-#[derive(ValueEnum, Debug, Clone, Copy)]
-enum ArgGeometryMethod {
-    Hyprland,
-    Sway,
-    Kde,
-    Gnome,
-    Unknown,
-    Auto,
-}
-
-impl From<ArgOverlayMethod> for OverlayMethod {
-    fn from(value: ArgOverlayMethod) -> Self {
-        match value {
-            ArgOverlayMethod::Wayland => OverlayMethod::Wayland,
-            ArgOverlayMethod::X11 => OverlayMethod::X11,
-            ArgOverlayMethod::Auto => OverlayMethod::Auto,
-        }
-    }
-}
-
-pub const STYLE: clap::builder::Styles = clap::builder::Styles::styled()
-    .usage(
-        anstyle::Style::new()
-            .bold()
-            .underline()
-            .fg_color(Some(anstyle::Color::Ansi(anstyle::AnsiColor::BrightBlue))),
-    )
-    .header(
-        anstyle::Style::new()
-            .bold()
-            .underline()
-            .fg_color(Some(anstyle::Color::Ansi(anstyle::AnsiColor::BrightBlue))),
-    )
-    .literal(
-        anstyle::Style::new().fg_color(Some(anstyle::Color::Ansi(anstyle::AnsiColor::BrightCyan))),
-    )
-    .invalid(
-        anstyle::Style::new()
-            .bold()
-            .fg_color(Some(anstyle::Color::Ansi(anstyle::AnsiColor::BrightRed))),
-    )
-    .error(
-        anstyle::Style::new()
-            .bold()
-            .fg_color(Some(anstyle::Color::Ansi(anstyle::AnsiColor::BrightRed))),
-    )
-    .valid(
-        anstyle::Style::new()
-            .bold()
-            .underline()
-            .fg_color(Some(anstyle::Color::Ansi(anstyle::AnsiColor::BrightCyan))),
-    )
-    .placeholder(
-        anstyle::Style::new().fg_color(Some(anstyle::Color::Ansi(anstyle::AnsiColor::White))),
-    );
-
-#[derive(Parser, Clone)]
-#[clap(author, version, about, long_about = None)]
-#[command(styles = STYLE)]
-struct Args {
-    #[clap(
-        long,
-        short = 's',
-        visible_alias = "sc",
-        group = "shortcut_group",
-        default_value = "Home"
-    )]
-    /// Shortcut to listen too, this might be ignored on wayland environments
-    ///
-    /// depending on how GlobalShortcuts is implemented
-    shortcut: String,
-    #[clap(
-        long,
-        visible_alias = "id",
-        group = "shortcut_group",
-        default_value = "wf_fissure_price_activate"
-    )]
-    /// GlobalShortcuts id
-    shortcut_id: String,
-    #[clap(
-        long,
-        visible_alias = "sm",
-        group = "shortcut_group",
-        default_value = "portal"
-    )]
-    /// Shortcut method to use
-    ///
-    /// portal uses global shortcuts protocol
-    ///
-    /// x11 works in xwayland mode (does not work in gamescope)
-    shortcut_method: ArgShortcutMethod,
-    #[clap(
-        long,
-        short = 'o',
-        visible_alias = "om",
-        group = "overlay_group",
-        default_value = "auto"
-    )]
-    /// Overlay method to use, auto depends on XDG_SESSION_TYPE
-    ///
-    /// only wayland is implemented
-    overlay_method: ArgOverlayMethod,
-    #[clap(
-        long,
-        short = 'a',
-        visible_alias = "oa",
-        group = "overlay_group",
-        default_value = "top-center"
-    )]
-    /// Where overlay is anchored to the screen
-    /// since global positioning isn't in wayland
-    overlay_anchor: OverlayAnchor,
-    #[clap(
-        long,
-        group = "overlay_group",
-        default_values_t = [lib::util::PIXEL_MARGIN_TOP as i32, 0, 0, 0],
-        num_args = 1,
-        value_delimiter = ','
-    )]
-    /// Overlay margin from anchor
-    ///
-    /// if --overlay-scale-margin is set, values need to be based on 1080p pixel values
-    ///
-    /// [format: top,right,bottom,left]
-    overlay_margin: Vec<i32>,
-    #[clap(
-        long,
-        short = 'm',
-        visible_alias = "osm",
-        group = "overlay_group",
-        default_value = "true"
-    )]
-    /// if true, will scale margin values,
-    ///
-    /// margin values will need to be based on 1080p pixel values
-    ///
-    /// [default: true]
-    overlay_scale_margin: bool,
-    #[clap(long, short = 'S', visible_alias = "os", group = "overlay_group")]
-    /// Overrides scaling the overlay would use
-    ///
-    /// [default: height / 1080]
-    overlay_scale: Option<f32>,
-    #[clap(long, short = 't', visible_alias = "ot", group = "overlay_group")]
-    /// If set, will override the theme the overlay uses
-    overlay_theme: Option<DefaultThemes>,
-    #[clap(
-        long,
-        short = 'g',
-        visible_alias = "gm",
-        group = "geometry_group",
-        default_value = "auto",
-        conflicts_with_all = ["geometry_command", "geometry"]
-    )]
-    /// Overrides geometry method
-    ///
-    /// [conflicts: --geometry-command, --geometry-static]
-    geometry_method: ArgGeometryMethod,
-    #[clap(
-        long,
-        short = 'C',
-        visible_alias = "gc",
-        group = "geometry_group",
-        conflicts_with_all = ["geometry_method", "geometry"]
-    )]
-    /// Override geometry method to always run this command
-    ///
-    /// command must output in this format
-    ///
-    /// [format: x,y,width,height]
-    ///
-    /// [conflicts: --geometry, --geometry-static]
-    geometry_command: Option<String>,
-    #[clap(
-        long,
-        short = 'G',
-        visible_alias = "goe",
-        group = "geometry_group",
-        num_args = 1,
-        value_delimiter = ',',
-        conflicts_with_all = ["geometry_method", "geometry_command"]
-    )]
-    /// Override geometry method to always be specified value
-    ///
-    /// [format: x,y,width,height]
-    ///
-    /// [conflicts: --geometry, --geometry-command]
-    geometry: Option<Vec<u32>>,
-    #[clap(long, short = 'd', default_value = "auto")]
-    /// auto: use colors found in the image,
-    /// should be used in HDR mode since HDR messes with colors
-    ///
-    /// overlay: use --overlay-theme
-    detection_method: ArgDetectionMethod,
-    #[clap(long, short = 'n', default_value = "false")]
-    /// Activates immanently skipping the need for a shortcut
-    ///
-    /// [default: false]
-    now: bool,
-    #[clap(long, short = 'i')]
-    /// Path to an image to be used like a screenshot of the rewards screen
-    ///
-    /// this ignores geometry options
-    ///
-    /// [requires: --now]
-    image: Option<PathBuf>,
-    #[clap(long, short = 'p')]
-    /// Path to prices json file
-    ///
-    /// https://api.warframestat.us/wfinfo/prices
-    prices: Option<PathBuf>,
-    #[clap(long, short = 'f', visible_alias = "fi")]
-    /// Path to filtered items file
-    ///
-    /// https://api.warframestat.us/wfinfo/filtered_items
-    filtered_items: Option<PathBuf>,
-    #[clap(long, short = 'O', visible_alias = "out")]
-    /// If set, instead of showing overlay on screen, save it as image
-    ///
-    /// ignores some overlay options
-    output: Option<PathBuf>,
-}
-
-impl Args {
-    fn error(error: clap::error::ErrorKind, message: impl std::fmt::Display) -> ! {
-        Self::command().error(error, message).exit()
-    }
-
-    fn validate(self) -> Self {
-        let style = STYLE.get_error();
-        let e = style.render();
-        let r = style.render_reset();
-
-        if self.overlay_margin.len() > 4 {
-            Self::error(
-                clap::error::ErrorKind::TooManyValues,
-                format!(
-                    "`{e}--overlay-margin{r}` can have at most '{e}4{r}' values, got '{e}{}{r}'",
-                    self.overlay_margin.len()
-                ),
-            );
-        }
-
-        if let Some(geometry_static) = &self.geometry
-            && geometry_static.len() != 4
-        {
-            Self::error(
-                clap::error::ErrorKind::TooManyValues,
-                format!(
-                    "'{e}--geometry_static{r}' must be exactly '{e}4{r}' values, got '{e}{}{r}'",
-                    geometry_static.len()
-                ),
-            );
-        }
-
-        self
-    }
-
-    fn get_overlay_margin(&self) -> OverlayMargin {
-        OverlayMargin {
-            top: self.overlay_margin[0],
-            right: self.overlay_margin[1],
-            bottom: self.overlay_margin[2],
-            left: self.overlay_margin[3],
-        }
-    }
-
-    fn get_geometry_method(&self) -> GeometryMethod {
-        match (
-            &self.geometry_method,
-            &self.geometry,
-            &self.geometry_command,
-        ) {
-            (ArgGeometryMethod::Hyprland, None, None) => GeometryMethod::Hyprland,
-            (ArgGeometryMethod::Sway, None, None) => GeometryMethod::Sway,
-            (ArgGeometryMethod::Kde, None, None) => GeometryMethod::Kde,
-            (ArgGeometryMethod::Gnome, None, None) => GeometryMethod::Gnome,
-            (ArgGeometryMethod::Unknown, None, None) => GeometryMethod::Unknown,
-            (_, Some(geometry_static), None) => GeometryMethod::Static(Geometry {
-                x: geometry_static[0],
-                y: geometry_static[1],
-                width: geometry_static[2],
-                height: geometry_static[3],
-            }),
-            (_, None, Some(geometry_command)) => GeometryMethod::Command(geometry_command.clone()),
-            _ => GeometryMethod::Auto,
-        }
-    }
-}
 
 async fn activate(
     items: Arc<Items>,
@@ -369,7 +17,7 @@ async fn activate(
     active_handle: Arc<AtomicBool>,
     args: &Args,
 ) -> anyhow::Result<()> {
-    let geometry_method = args.get_geometry_method();
+    let geometry_method = args.geometry.method.clone();
 
     let image = match &args.image {
         None => take_screenshot(geometry_method).await?,
@@ -379,25 +27,27 @@ async fn activate(
     let scale = get_scale(&image)?;
 
     let overlay_theme = args
-        .overlay_theme
+        .overlay
+        .theme
         .map(|t| t.into())
         .or_else(|| DEFAULT_THEMES.detect_theme(&image, scale))
         .cloned();
 
-    let detection_theme = match args.detection_method {
+    let detection_theme = match &args.misc.detection_method {
         ArgDetectionMethod::Auto => Some(auto_theme("auto", &image)?),
         ArgDetectionMethod::Overlay => overlay_theme.clone(),
-        ArgDetectionMethod::Custom(theme) => Some(theme.deref().clone())
+        ArgDetectionMethod::Default(theme) => Some(theme.deref().clone()),
+        ArgDetectionMethod::Custom(theme) => Some(theme.clone()),
     };
 
     let settings = ShowOverlaySettings {
         items,
-        anchor: args.overlay_anchor,
-        margin: args.get_overlay_margin(),
-        scale: args.overlay_scale,
-        scale_margin: args.overlay_scale_margin,
+        anchor: args.overlay.anchor,
+        margin: args.overlay.margin,
+        scale: args.overlay.scale,
+        scale_margin: args.overlay.scale_margin,
         close_handle,
-        method: args.overlay_method.clone().into(),
+        method: args.overlay.method.clone().into(),
         save_path: args.output.clone(),
         detection_theme,
         overlay_theme,
@@ -413,7 +63,7 @@ async fn activate(
 }
 
 async fn run_program(args: Args) -> anyhow::Result<()> {
-    let items = get_items(args.prices.clone(), args.filtered_items.clone()).await?;
+    let items = get_items(args.misc.prices.clone(), args.misc.filtered_items.clone()).await?;
     let items = Arc::new(items);
     let close_handle = Arc::new(AtomicBool::new(false));
     let active_handle = Arc::new(AtomicBool::new(false));
@@ -425,7 +75,7 @@ async fn run_program(args: Args) -> anyhow::Result<()> {
     }
 
     let args = Arc::new(args);
-    let shortcut_args = args.clone();
+    let shortcut_args = args.shortcut.clone();
 
     let callback_items = items.clone();
     let callback_close_handle = close_handle.clone();
@@ -468,11 +118,11 @@ async fn run_program(args: Args) -> anyhow::Result<()> {
         let rt = tokio::runtime::Runtime::new().unwrap();
 
         let settings = ShortcutSettings {
-            id: &shortcut_args.shortcut_id,
-            preferred_trigger: &shortcut_args.shortcut,
+            id: &shortcut_args.id,
+            preferred_trigger: &shortcut_args.trigger,
         };
 
-        match shortcut_args.shortcut_method {
+        match shortcut_args.method {
             ArgShortcutMethod::Portal => {
                 rt.block_on(bin::portal_shortcut(settings, shortcut_callback)) //
             }
@@ -512,7 +162,9 @@ async fn run_program(args: Args) -> anyhow::Result<()> {
 #[tokio::main]
 async fn main() {
     env_logger::init();
-    let args = Args::parse().validate();
+    let args = Args::parse();
+
+    println!("{}", toml::to_string_pretty(&args).unwrap());
 
     let Err(err) = run_program(args).await else {
         return;

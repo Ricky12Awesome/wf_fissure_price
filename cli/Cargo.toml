@@ -17,4 +17,5 @@ tokio = { workspace = true }
 anyhow = { workspace = true }
 env_logger = { workspace = true }
 clap = { workspace = true }
-anstyle = { workspace = true }
+
+toml = "0.9.8"

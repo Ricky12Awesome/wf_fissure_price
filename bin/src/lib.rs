@@ -3,6 +3,7 @@ pub mod geometry;
 pub mod overlay;
 mod util;
 pub mod watcher;
+pub mod args;
 
 use std::path::PathBuf;
 use std::sync::Arc;

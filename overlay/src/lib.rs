@@ -61,6 +61,7 @@ impl OverlayTime {
 }
 
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 #[cfg_attr(feature = "clap", derive(clap::ValueEnum))]
 pub enum OverlayAnchor {
     TopLeft,
@@ -93,16 +94,20 @@ impl OverlayAnchor {
 }
 
 #[derive(Default, Debug, Clone)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
 pub struct OverlayConf {
     pub anchor: OverlayAnchor,
     pub margin: OverlayMargin,
     pub width: u32,
     pub height: u32,
     pub save_path: Option<PathBuf>,
+    #[serde(skip)]
     pub close_handle: Arc<AtomicBool>,
 }
 
 #[derive(Default, Debug, Clone, Copy, PartialEq, Eq, Hash)]
+#[cfg_attr(feature = "serde", derive(serde::Serialize, serde::Deserialize))]
+#[cfg_attr(feature = "serde", serde(from = "[i32; 4]", into = "[i32; 4]"))]
 pub struct OverlayMargin {
     pub top: i32,
     pub right: i32,

@@ -3,7 +3,7 @@
 use std::env;
 use std::process::Command;
 
-use serde::Deserialize;
+use serde::{Deserialize, Serialize};
 
 #[derive(Debug, Clone, Copy, Deserialize)]
 pub struct HyprWindow {
@@ -11,12 +11,24 @@ pub struct HyprWindow {
     pub size: [u32; 2],
 }
 
-#[derive(Debug, Default, Clone, Copy, Deserialize)]
+#[derive(Debug, Default, Clone, Copy, Serialize, Deserialize)]
+#[serde(from = "[u32; 4]", into = "[u32; 4]")]
 pub struct Geometry {
     pub x: u32,
     pub y: u32,
     pub width: u32,
     pub height: u32,
+}
+
+impl From<[u32; 4]> for Geometry {
+    fn from([x, y, width, height]: [u32; 4]) -> Self {
+        Self {
+            x,
+            y,
+            width,
+            height,
+        }
+    }
 }
 
 impl From<Geometry> for (u32, u32, u32, u32) {
@@ -85,15 +97,21 @@ pub fn custom_impl(cmd: String) -> anyhow::Result<Geometry> {
     })
 }
 
-#[derive(Debug, Clone)]
+#[derive(Default, Debug, Clone, Serialize, Deserialize)]
+#[cfg_attr(feature = "clap", derive(clap::ValueEnum))]
 pub enum GeometryMethod {
     Hyprland,
     Sway,
     Kde,
     Gnome,
     Unknown,
+    #[default]
     Auto,
+    #[cfg_attr(feature = "clap", clap(skip))]
+    #[serde(untagged)]
     Static(Geometry),
+    #[cfg_attr(feature = "clap", clap(skip))]
+    #[serde(untagged)]
     /// command must output 4 comma seperated numbers like: `x, y, width, height`
     Command(String),
 }
@@ -117,10 +135,12 @@ impl GeometryMethod {
 
     pub fn check_unsupported(&self) -> anyhow::Result<()> {
         if matches!(self, Self::Hyprland | Self::Command(_) | Self::Static(_)) {
-            return Ok(())
+            return Ok(());
         };
 
-        Err(anyhow::anyhow!("Only hyprland is supported currently, try static or command method"))
+        Err(anyhow::anyhow!(
+            "Only hyprland is supported currently, try static or command method"
+        ))
     }
 
     pub fn get_active_window_geometry(self) -> anyhow::Result<Geometry> {
@@ -130,8 +150,10 @@ impl GeometryMethod {
             Self::Sway => Err(anyhow::anyhow!("Currently Unsupported")),
             Self::Kde => Err(anyhow::anyhow!("Currently Unsupported")),
             Self::Gnome => Err(anyhow::anyhow!("Currently Unsupported")),
-            Self::Unknown => Err(anyhow::anyhow!("Unknown desktop, try static or command method")),
-            Self::Static(w) => Ok(w),
+            Self::Unknown => Err(anyhow::anyhow!(
+                "Unknown desktop, try static or command method"
+            )),
+            Self::Static(w) => Ok(w.into()),
             Self::Command(cmd) => custom_impl(cmd),
         }
     }

@@ -5,7 +5,7 @@ edition = "2024"
 
 [dependencies]
 lib = { path = "../lib" }
-overlay = { path = "../overlay" }
+overlay = { path = "../overlay", features = ["serde"] }
 
 log = { workspace = true }
 image = { workspace = true }
@@ -23,5 +23,8 @@ x11rb = { workspace = true }
 #xcap = { workspace = true}
 xkbcommon = { workspace = true }
 
+clap = { workspace = true, optional = true }
+anstyle = { workspace = true, optional = true }
+
 [features]
-clap = ["overlay/clap", "lib/clap"]
+clap = ["overlay/clap", "lib/clap", "dep:clap", "dep:anstyle"]

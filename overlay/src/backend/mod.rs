@@ -19,6 +19,7 @@ pub trait OverlayBackend {
 
 #[derive(Default, Debug, Clone, Copy, Eq, PartialEq)]
 #[cfg_attr(feature = "clap", derive(clap::ValueEnum))]
+#[cfg_attr(feature = "serde", derive(serde::Deserialize, serde::Serialize))]
 pub enum OverlayMethod {
     Wayland,
     Image,
