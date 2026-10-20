@@ -147,7 +147,7 @@ pub struct ArgShortcut {
             default_value = "wf_fissure_price_activate"
         )
     )]
-    /// GlobalShortcuts id
+    /// Shortcut action ID (separate from the portal application ID)
     pub id: String,
 
     #[cfg_attr(

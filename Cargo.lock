@@ -478,8 +478,10 @@ name = "cli"
 version = "0.1.0"
 dependencies = [
  "anyhow",
+ "ashpd",
  "bin",
  "clap",
+ "dirs",
  "env_logger",
  "image",
  "lib",

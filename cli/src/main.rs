@@ -1,3 +1,5 @@
+mod portal;
+
 use std::ops::Deref;
 use std::sync::Arc;
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -63,6 +65,12 @@ async fn activate(
 }
 
 async fn run_program(args: Args) -> anyhow::Result<()> {
+    // Register on the main runtime before either the shortcut or screenshot
+    // threads can make the first request on ashpd's shared D-Bus connection.
+    if !args.now && matches!(args.shortcut.method, ArgShortcutMethod::Portal) {
+        portal::init().await?;
+    }
+
     let items = get_items(args.misc.prices.clone(), args.misc.filtered_items.clone()).await?;
     let items = Arc::new(items);
     let close_handle = Arc::new(AtomicBool::new(false));
@@ -170,5 +178,5 @@ async fn main() {
         return;
     };
 
-    Args::error(clap::error::ErrorKind::InvalidValue, err);
+    Args::error(clap::error::ErrorKind::InvalidValue, format!("{err:#}"));
 }

@@ -13,6 +13,22 @@ I want this project to work more like
 ## Project Status
 Currently, this project only works on Wayland
 
+### Running the CLI
+
+```sh
+cargo run --package cli --bin wffp-cli
+```
+
+The CLI registers `io.github.Ricky12Awesome.WFFissurePrice` as its portal
+application ID before requesting global shortcuts. When no matching
+desktop entry is installed, it creates one in `$XDG_DATA_HOME/applications`
+(normally `~/.local/share/applications`). This also supports running from Cargo;
+the entry points to the current executable, updates if it moves, and is hidden
+from application menus. Existing entries installed by a user or package are kept.
+The `--shortcut-id` option identifies the shortcut action, independently of the
+application ID.
+Registration also works with `GTK_USE_PORTAL=1`.
+
 ### Pricing Data
 - https://api.warframestat.us/wfinfo/prices (Platinum)
 - https://api.warframestat.us/wfinfo/filtered_items (Ducats)
