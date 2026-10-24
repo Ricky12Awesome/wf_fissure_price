@@ -1,10 +1,10 @@
 use image::DynamicImage;
-use log::debug;
+use log::{debug, error};
 use tesseract::Tesseract;
 
 use crate::theme::{DEFAULT_THEMES, Theme, Themes};
 use crate::util::{
-    FILTER_BACKGROUND, FILTER_FOREGROUND, PIXEL_REWARD_HEIGHT, PIXEL_REWARD_LINE_HEIGHT, PIXEL_REWARD_WIDTH, PIXEL_REWARD_Y, get_scale
+    FILTER_BACKGROUND, FILTER_FOREGROUND, PIXEL_REWARD_HEIGHT, PIXEL_REWARD_LINE_HEIGHT, PIXEL_REWARD_WIDTH, PIXEL_REWARD_Y, get_scale,
 };
 use crate::wfinfo::{Item, Items};
 
@@ -157,10 +157,16 @@ pub fn reward_image_to_reward_names<'a>(
 
     let text = parts
         .iter()
-        .map(image_to_string)
-        .collect::<Result<_, _>>()?;
+        .map(image_to_string) //
+        .collect::<Result<_, _>>();
 
-    Ok((text, theme))
+    match text {
+        Ok(text) => Ok((text, theme)),
+        Err(e) => {
+            error!("Error extracting part images: {e}");
+            Err(e)
+        },
+    }
 }
 
 pub fn reward_image_to_items<'a>(

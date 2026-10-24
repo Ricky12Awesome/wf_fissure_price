@@ -14,7 +14,7 @@ use lib::ocr::reward_image_to_items;
 use lib::theme::Theme;
 use lib::util::{PIXEL_MARGIN_TOP, PIXEL_REWARD_HEIGHT, PIXEL_SINGLE_REWARD_WIDTH, get_scale};
 use lib::wfinfo::Items;
-use log::debug;
+use log::{debug, warn};
 use overlay::backend::{OverlayBackend, OverlayMethod, get_backend};
 use overlay::{OverlayAnchor, OverlayConf, OverlayMargin};
 
@@ -243,7 +243,12 @@ pub async fn extract_reward_image<'a>(
     let (items, theme) = reward_image_to_items(items, image, theme)?;
 
     if items.is_empty() {
+        warn!("No items detected");
         return Ok(None);
+    }
+
+    for item in &items {
+        debug!("Detected reward: {}", item.name);
     }
 
     let max_len = items.iter().map(|item| item.name.len()).max().unwrap();
