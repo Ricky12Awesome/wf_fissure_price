@@ -539,26 +539,26 @@ impl Deref for Themes {
         &self.0
     }
 }
-
-pub fn auto_theme(name: impl ToString, image: &DynamicImage) -> crate::Result<Theme> {
-    let scale = crate::util::get_scale(image)?;
-    let x = crate::util::PIXEL_PROFILE_LINE_X * scale;
-    let y = crate::util::PIXEL_PROFILE_LINE_Y * scale;
-
-    let color = image.get_pixel(x as u32, y as u32).to_rgb();
-    let rgb = Srgb::from_components((
-        color.0[0] as f32 / 255.0,
-        color.0[1] as f32 / 255.0,
-        color.0[2] as f32 / 255.0,
-    ));
-
-    let color = Hsl::from_color(rgb);
-
-    Ok(Theme {
-        name: name.to_string().into(),
-        primary: color,
-        secondary: color,
-        primary_threshold: [0.05, 0.05, 0.05],
-        secondary_threshold: [0.05, 0.05, 0.05],
-    })
-}
+// 
+// pub fn auto_theme(name: impl ToString, image: &DynamicImage) -> crate::Result<Theme> {
+//     let scale = crate::util::get_scale(image)?;
+//     let x = crate::util::PIXEL_PROFILE_LINE_X * scale;
+//     let y = crate::util::PIXEL_PROFILE_LINE_Y * scale;
+// 
+//     let color = image.get_pixel(x as u32, y as u32).to_rgb();
+//     let rgb = Srgb::from_components((
+//         color.0[0] as f32 / 255.0,
+//         color.0[1] as f32 / 255.0,
+//         color.0[2] as f32 / 255.0,
+//     ));
+// 
+//     let color = Hsl::from_color(rgb);
+// 
+//     Ok(Theme {
+//         name: name.to_string().into(),
+//         primary: color,
+//         secondary: color,
+//         primary_threshold: [0.05, 0.05, 0.05],
+//         secondary_threshold: [0.05, 0.05, 0.05],
+//     })
+// }

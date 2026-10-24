@@ -8,7 +8,7 @@ use bin::args::{ArgDetectionMethod, ArgShortcutMethod, Args};
 use bin::cache::get_items;
 use bin::watcher::{get_default_ee_log_path, log_watcher};
 use bin::{ShortcutSettings, ShowOverlaySettings, take_screenshot};
-use lib::theme::{DEFAULT_THEMES, auto_theme};
+use lib::theme::DEFAULT_THEMES;
 use lib::util::get_scale;
 use lib::wfinfo::Items;
 use log::{debug, error};
@@ -36,7 +36,7 @@ async fn activate(
         .cloned();
 
     let detection_theme = match &args.misc.detection_method {
-        ArgDetectionMethod::Auto => Some(auto_theme("auto", &image)?),
+        // ArgDetectionMethod::Auto => Some(auto_theme("auto", &image)?),
         ArgDetectionMethod::Overlay => overlay_theme.clone(),
         ArgDetectionMethod::Default(theme) => Some(theme.deref().clone()),
         ArgDetectionMethod::Custom(theme) => Some(theme.clone()),

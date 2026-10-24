@@ -26,8 +26,8 @@ pub enum ArgOverlayMethod {
 
 #[derive(Default, Debug, Clone, Serialize, Deserialize)]
 pub enum ArgDetectionMethod {
+    // Auto,
     #[default]
-    Auto,
     Overlay,
     #[serde(untagged)]
     Default(DefaultThemes),
@@ -39,7 +39,7 @@ pub enum ArgDetectionMethod {
 impl clap::ValueEnum for ArgDetectionMethod {
     fn value_variants<'a>() -> &'a [Self] {
         &[
-            Self::Auto,
+            // Self::Auto,
             Self::Overlay,
             Self::Default(DefaultThemes::Baruuk),
             Self::Default(DefaultThemes::Conquera),
@@ -65,7 +65,7 @@ impl clap::ValueEnum for ArgDetectionMethod {
 
     fn to_possible_value(&self) -> Option<clap::builder::PossibleValue> {
         match self {
-            ArgDetectionMethod::Auto => Some(clap::builder::PossibleValue::new("auto")),
+            // ArgDetectionMethod::Auto => Some(clap::builder::PossibleValue::new("auto")),
             ArgDetectionMethod::Overlay => Some(clap::builder::PossibleValue::new("overlay")),
             ArgDetectionMethod::Default(theme) => theme.to_possible_value(),
             _ => None,
@@ -326,7 +326,7 @@ pub struct ArgGeometry {
 #[derive(Default, Clone, Serialize, Deserialize)]
 #[cfg_attr(feature = "clap", derive(clap::Parser))]
 pub struct ArgMisc {
-    #[cfg_attr(feature = "clap", clap(long, short = 'd', default_value = "auto"))]
+    #[cfg_attr(feature = "clap", clap(long, short = 'd', default_value = "overlay"))]
     /// auto: use colors found in the image,
     /// should be used in HDR mode since HDR messes with colors
     ///
