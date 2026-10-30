@@ -33,6 +33,8 @@ pub enum EquipmentType {
     Archwing,
     #[serde(rename = "Arch-Gun")]
     ArchGun,
+    #[serde(rename = "Arch-Melee")]
+    ArchMelee,
     Skins,
 }
 
@@ -220,38 +222,65 @@ impl Items {
     }
 
     pub fn find_item(&self, item_name: &str) -> Option<Item> {
-        let item_name = item_name.trim();
+        fn normalize(name: &str) -> String {
+            name.chars()
+                .filter(char::is_ascii_alphanumeric)
+                .map(|character| character.to_ascii_lowercase())
+                .collect()
+        }
 
-        if !(self.min_len..=self.max_len).contains(&item_name.len()) {
+        let item_name = normalize(item_name);
+        if item_name.is_empty() {
             return None;
         }
 
-        let mut current_matches = self.items.clone();
+        let mut best_match = None;
+        let mut best_score = usize::MAX;
+        let mut ambiguous = false;
 
-        for (i, token) in item_name.split_ascii_whitespace().enumerate() {
-            let best_match = current_matches
-                .iter()
-                .filter(|item| i < item.tokens.len())
-                .map(|item| (item, levenshtein::levenshtein(&item.tokens[i], token)))
-                // .inspect(|(item, score)| println!("{} {score}", item.tokens[i]))
-                .filter(|(item, score)| item.tokens[i].len() / 3 >= *score)
-                .min_by_key(|(_, score)| *score);
-
-            let Some((best_match, score)) = best_match else {
+        for item in &self.items {
+            let Some(first_token) = item.tokens.first() else {
                 continue;
             };
+            let prefix = normalize(first_token);
+            let prefix_errors = prefix.len() / 3;
+            let min_prefix = prefix.len() - prefix_errors;
+            let max_prefix = (prefix.len() + prefix_errors).min(item_name.len());
 
-            let best_matched_token = best_match.tokens[i].clone();
+            // Generic words such as "Prime Systems" cannot identify the item's family.
+            if !(min_prefix..=max_prefix).any(|length| {
+                levenshtein::levenshtein(&prefix, &item_name[..length]) <= prefix_errors
+            }) {
+                continue;
+            }
 
-            current_matches.retain(|item| {
-                item.tokens
-                    .get(i)
-                    .filter(|t| **t == best_matched_token)
-                    .is_some()
-            });
+            let mut display_names = vec![normalize(&item.name)];
+            if matches!(
+                item.tokens.last().map(String::as_str),
+                Some("Chassis" | "Neuroptics" | "Systems")
+            ) {
+                display_names.push(format!("{}blueprint", display_names[0]));
+            }
+
+            let score = display_names
+                .iter()
+                .map(|name| levenshtein::levenshtein(name, &item_name))
+                .filter(|score| *score <= item_name.len() / 5)
+                .min();
+
+            let Some(score) = score else {
+                continue;
+            };
+            if score < best_score {
+                best_match = Some(item);
+                best_score = score;
+                ambiguous = false;
+            } else if score == best_score {
+                ambiguous = true;
+            }
         }
 
-        current_matches.into_iter().next()
+        if ambiguous { None } else { best_match.cloned() }
     }
 }
 
@@ -294,5 +323,44 @@ impl WfInfo {
             .json()
             .await
             .map_err(Into::into)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn loads_arch_melee_parts_with_prices() {
+        let filtered = load_from_str::<FilteredItems>(
+            r#"{
+                "errors": [],
+                "relics": {"Lith": {}, "Neo": {}, "Meso": {}, "Axi": {}},
+                "eqmt": {
+                    "Test Arch-Melee": {
+                        "type": "Arch-Melee",
+                        "vaulted": false,
+                        "parts": {"Test Arch-Melee Blade": {"ducats": 45}}
+                    }
+                },
+                "ignored_items": {}
+            }"#,
+        )
+        .expect("Arch-Melee equipment should load from the filtered items response");
+        let items = Items::new(
+            vec![PriceItem {
+                name: "Test Arch-Melee Blade".to_owned(),
+                custom_avg: 10.0,
+            }],
+            filtered,
+        );
+
+        let part = items
+            .find_item("Test Arch-Melee Blade")
+            .expect("Arch-Melee parts should be available for lookup");
+        assert_eq!(part.platinum, Some(10.0));
+        assert_eq!(part.ducats, Some(45));
+        assert!(!part.vaulted);
+        assert!(!part.ignored);
     }
 }
